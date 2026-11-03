@@ -28,8 +28,8 @@ class PromptMixin:
         if mounted:
             system += "\n--- 已挂载技能 ---\n" + "\n\n".join(mounted) + "\n"
 
-        # 共享事实：重启/新开/compact 之后，新 agent 也自动看到这些"硬结论"
-        facts = self.state.get("facts") or {}
+        # 本 worker 自己的事实（落盘、长期保留；restart 会沿用同一份）
+        facts = self.load_facts(self.facts_owner(worker))
         if facts:
             lines = []
             used = 0
@@ -44,7 +44,7 @@ class PromptMixin:
                 lines.append(line)
                 used += len(line)
             system += (
-                "\n--- 已知事实（跨 agent 共享；重启/新开也不丢）---\n"
+                "\n--- 你的事实（长期保存；restart/续跑也不丢）---\n"
                 + "\n".join(lines)
                 + "\n"
             )

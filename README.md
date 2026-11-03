@@ -51,6 +51,7 @@ ForChat/
 │   ├── test_primitives.py      原语：预算/配置校验（11 条）
 │   ├── test_primitives_flows.py    原语：派生/hook/并发（13 条）
 │   ├── test_primitives_resources.py 原语：上下文裁剪/资源感知/排队（5 条）
+│   ├── test_primitives_lifecycle.py 原语：fork/restart/每 worker 事实（4 条）
 │   ├── test_primitives_state.py    原语：状态/续跑/运行图（11 条）
 │   ├── test_primitives_guards.py   原语：scope/停止/快照/重试（8 条）
 │   ├── test_tools.py           工具：registry/provider/重试/成本（12 条）
@@ -80,6 +81,7 @@ pytest -q                          # 同一批用例走 pytest（CI 用的就是
 python tests/test_primitives.py    # 原语：预算/配置校验
 python tests/test_primitives_flows.py   # 原语：派生/hook/并发
 python tests/test_primitives_resources.py   # 原语：上下文裁剪/资源感知/排队
+python tests/test_primitives_lifecycle.py   # 原语：fork/restart/事实
 python tests/test_primitives_state.py   # 原语：状态/续跑/运行图
 python tests/test_primitives_guards.py  # 原语：scope/停止/快照/重试
 python tests/test_tools.py         # 工具：registry/provider/重试/成本

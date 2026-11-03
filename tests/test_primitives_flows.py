@@ -310,108 +310,6 @@ def test_parallel_spawn_and_log_integrity() -> None:
         if line.strip():
             json.loads(line)          # 半行会在这里抛 JSONDecodeError
 
-def test_fork_and_restart_agents() -> None:
-    """fork 继承快照对话；restart 是全新会话。"""
-    import copy
-
-    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["spawn", "wait_workers", "fork", "restart", "report"]
-    raw["workers"]["root"]["can_spawn"] = ["coder"]
-    raw["workers"]["root"]["hooks"] = {}
-    raw["workers"]["coder"]["hooks"] = {}
-    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
-
-    inner = FakeProvider(
-        TemplateResponder(
-            {
-                "root": [
-                    tool_chunks([("spawn", {"template": "coder", "task": "子任务"})]),
-                    tool_chunks([("fork", {"worker_id": "n002-coder"})]),
-                    tool_chunks([("restart", {"worker_id": "n002-coder"})]),
-                    tool_chunks([("report", {"summary": "根完成"})]),
-                ],
-                "coder": [
-                    tool_chunks([("report", {"summary": "原始结论"})]),
-                    tool_chunks([("report", {"summary": "fork 结论"})]),
-                    tool_chunks([("report", {"summary": "restart 结论"})]),
-                ],
-            }
-        )
-    )
-
-    class Recording:
-        def __init__(self, provider):
-            self.provider = provider
-            self.calls: list[list[dict]] = []
-
-        def stream(self, model, messages, tools=None):
-            self.calls.append(copy.deepcopy(messages))
-            return self.provider.stream(model, messages, tools)
-
-    provider = Recording(inner)
-    runtime = Runtime(workflow, provider, tmpdir())
-    root = runtime.start("任务")
-
-    assert root.status == "done"
-    assert runtime.log.query(type="worker_forked")
-    assert runtime.log.query(type="worker_restarted")
-
-    coder_calls = [
-        call for call in provider.calls
-        if any("模板 coder" in str(message) for message in call)
-    ]
-    assert len(coder_calls) >= 3, [len(call) for call in coder_calls]
-
-    fork_messages = coder_calls[1]
-    assert any("原始结论" in str(message) for message in fork_messages)
-
-    restart_messages = coder_calls[2]
-    assert not any("原始结论" in str(message) for message in restart_messages)
-
-
-def test_facts_survive_new_agent() -> None:
-    """事实库落盘：新开一个 agent 也能在系统提示里看到。"""
-    import copy
-
-    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["write_fact", "read_facts", "report"]
-    raw["workers"]["root"]["can_spawn"] = []
-    raw["workers"]["root"]["hooks"] = {}
-    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
-
-    run_dir = tmpdir()
-    first = FakeProvider(
-        TemplateResponder(
-            {
-                "root": [
-                    tool_chunks([("write_fact", {"name": "构建命令", "content": "pytest -q"})]),
-                    tool_chunks([("report", {"summary": "写完了"})]),
-                ]
-            }
-        )
-    )
-    Runtime(workflow, first, run_dir).start("任务")
-
-    class Recording:
-        def __init__(self, provider):
-            self.provider = provider
-            self.calls: list[list[dict]] = []
-
-        def stream(self, model, messages, tools=None):
-            self.calls.append(copy.deepcopy(messages))
-            return self.provider.stream(model, messages, tools)
-
-    second = Recording(
-        FakeProvider(
-            TemplateResponder({"root": [tool_chunks([("report", {"summary": "新 agent"})])]})
-        )
-    )
-    Runtime(workflow, second, run_dir).start("继续")
-    system = second.calls[0][0]["content"]
-    assert "已知事实" in system
-    assert "pytest -q" in system
-
-
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),
@@ -427,8 +325,6 @@ def main() -> int:
         ("父 worker 读子报告", test_read_worker_report),
         ("调度器并发上限", test_scheduler_concurrency_limit),
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
-        ("fork / restart agent", test_fork_and_restart_agents),
-        ("事实库跨 agent 存活", test_facts_survive_new_agent),
     ]
     return run("原语流程自检", checks)
 

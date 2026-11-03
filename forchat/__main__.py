@@ -154,6 +154,7 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         skill_loader=build_skill_loader(),
         guard=Policy(Path.cwd()).check,
         pricing=pricing if pricing.known() else None,
+        facts_dir=os.environ.get("FORCHAT_FACTS_DIR") or None,
     )
 
 

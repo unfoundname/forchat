@@ -16,6 +16,7 @@ STEPS = [
     ("原语自检", [sys.executable, "tests/test_primitives.py"]),
     ("原语流程自检", [sys.executable, "tests/test_primitives_flows.py"]),
     ("原语资源/上下文自检", [sys.executable, "tests/test_primitives_resources.py"]),
+    ("原语生命周期自检", [sys.executable, "tests/test_primitives_lifecycle.py"]),
     ("原语状态/预算自检", [sys.executable, "tests/test_primitives_state.py"]),
     ("原语围栏自检", [sys.executable, "tests/test_primitives_guards.py"]),
     ("工具自检", [sys.executable, "tests/test_tools.py"]),

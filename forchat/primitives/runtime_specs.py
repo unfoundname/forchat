@@ -164,8 +164,8 @@ TOOL_SPECS: dict[str, dict] = {
         "type": "function",
         "function": {
             "name": "write_fact",
-            "description": "把一条'事实'写进跨 agent 的共享事实库（落盘 state.json）。"
-                           "它会自动出现在之后每个新 agent 的系统提示里——重启/新开/compact 都不丢。",
+            "description": "把一条'事实'写进**你这个 worker 自己的**事实库（落盘长期保存）。"
+                           "restart/续跑之后的新 agent 会自动在系统提示里看到这些事实。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -180,8 +180,13 @@ TOOL_SPECS: dict[str, dict] = {
         "type": "function",
         "function": {
             "name": "read_facts",
-            "description": "读取当前运行的全部事实（跨 agent 共享）。",
-            "parameters": {"type": "object", "properties": {}},
+            "description": "读事实：默认读自己的；也可以读别的 worker 的（协调时用）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string", "description": "要读谁的；省略则读自己的"},
+                },
+            },
         },
     },
 }

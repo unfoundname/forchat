@@ -139,6 +139,13 @@ class ToolsMixin:
         if child is None:
             return f"错误：fork 被资源限制拒绝{self._resource_line()}"
         self.log.append("worker_forked", worker_id=child.id, source=target.id, by=worker.id)
+        # fork 复制一份源 worker 的事实，之后两条分支各写各的
+        child.facts_owner = child.id
+        for name, content in self.load_facts(self.facts_owner(target)).items():
+            try:
+                self.save_fact(child.id, name, content)
+            except ValueError:
+                break
         if bool(args.get("wait", True)):
             self._run_worker(child, resume=state)
             summary = (child.report.summary if child.report else "")[:300]
@@ -159,6 +166,7 @@ class ToolsMixin:
         if child is None:
             return f"错误：restart 被资源限制拒绝{self._resource_line()}"
         self.log.append("worker_restarted", worker_id=child.id, source=target.id, by=worker.id)
+        child.facts_owner = self.facts_owner(target)   # 同一个逻辑 worker，事实沿用
         if bool(args.get("wait", True)):
             self._run_worker(child)                 # 全新会话，不带旧对话
             summary = (child.report.summary if child.report else "")[:300]
@@ -171,19 +179,21 @@ class ToolsMixin:
         content = str(args.get("content") or "").strip()
         if not name or not content:
             return "错误：write_fact 需要 name 与 content"
-        facts = self.state.setdefault("facts", {})
-        total = sum(len(str(item)) for item in facts.values()) + len(content)
-        if total > 20000:
-            return f"错误：事实库总计会到 {total} 字符，超过 20000；先精简已有事实"
-        facts[name] = content[:4000]
-        self._save_state()
-        self.log.append("fact_written", worker_id=worker.id, name=name)
-        return f"已写入事实 {name}（{len(content)} 字符，跨 agent 共享）"
+        owner = self.facts_owner(worker)
+        try:
+            self.save_fact(owner, name, content)
+        except ValueError as exc:
+            return f"错误：{exc}"
+        self.log.append("fact_written", worker_id=worker.id, owner=owner,
+                        name=name, chars=len(content))
+        return f"已为 {owner} 记录事实 {name}（{len(content)} 字符，落盘长期保存）"
 
     def _tool_read_facts(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
-        facts = self.state.get("facts") or {}
+        target = str(args.get("worker_id") or "").strip()
+        owner = target or self.facts_owner(worker)
+        facts = self.load_facts(owner)
         if not facts:
-            return "（还没有事实）"
+            return f"（{owner} 还没有事实）"
         return "\n".join(f"- {name}: {content}" for name, content in facts.items())
     def _tool_wait_workers(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         ids = [str(i) for i in args.get("worker_ids") or []]

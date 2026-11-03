@@ -38,10 +38,13 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         skill_loader: Callable[[str], str | None] | None = None,
         guard: Callable[[str, str], str | None] | None = None,
         pricing: Any | None = None,
+        facts_dir: Path | str | None = None,
     ) -> None:
         self.wf = workflow
         self.provider = provider
         self.model = model
+        # 每个 worker 一份事实文件；默认落在 run 目录，可用 FORCHAT_FACTS_DIR 指到长期存储
+        self.facts_dir = Path(facts_dir) if facts_dir else (Path(run_dir) / "facts")
         # name -> (openai spec, caller(raw_arguments_json))
         # 由装配层（tool_bridge）注入；原语层不认识 registry，也不认识任何工具实现
         self.external = dict(external_tools or {})

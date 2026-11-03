@@ -68,6 +68,36 @@ class StateMixin:
             next_seq=self._seq + 1,
             interrupted=len(self._interrupted),
         )
+    # ------------------------------------------------------------------ 事实库（每个 worker 一份，落盘长期保留）
+    def _facts_path(self, owner_id: str) -> Path:
+        self.facts_dir.mkdir(parents=True, exist_ok=True)
+        return self.facts_dir / f"{owner_id}.json"
+
+    def facts_owner(self, worker: WorkerInstance) -> str:
+        return worker.facts_owner or worker.id
+
+    def load_facts(self, owner_id: str) -> dict[str, str]:
+        path = self._facts_path(owner_id)
+        if not path.is_file():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return {str(key): str(value) for key, value in (data or {}).items()}
+
+    def save_fact(self, owner_id: str, name: str, content: str) -> Path:
+        facts = self.load_facts(owner_id)
+        total = sum(len(item) for item in facts.values()) + len(content)
+        if total > 20000:
+            raise ValueError(f"事实库总计将到 {total} 字符，超过 20000；先精简已有事实")
+        facts[name] = content[:4000]
+        path = self._facts_path(owner_id)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(facts, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(path)
+        return path
+
     # ------------------------------------------------------------------ 状态
     @property
     def interrupted(self) -> list[str]:
