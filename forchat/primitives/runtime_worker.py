@@ -21,6 +21,14 @@ class WorkerMixin:
         """
         limit_messages = int(os.environ.get("FORCHAT_CONTEXT_MESSAGES", "80"))
         limit_chars = int(os.environ.get("FORCHAT_CONTEXT_CHARS", "160000"))
+        # 预算感知：整轮预算快用完时自动收紧上下文，别等撞闸才后悔
+        tight = False
+        if self.max_total_tokens > 0:
+            remaining = max(0.0, 1.0 - self.total_tokens / self.max_total_tokens)
+            if remaining < 0.2:
+                tight = True
+                limit_messages = min(limit_messages, 30)
+                limit_chars = min(limit_chars, 60000)
         chars = sum(len(str(item.get("content") or "")) for item in messages)
         if len(messages) <= limit_messages and chars <= limit_chars:
             return
@@ -46,6 +54,7 @@ class WorkerMixin:
             dropped=dropped,
             kept=len(messages),
             chars=sum(len(str(item.get("content") or "")) for item in messages),
+            tight=tight,
         )
 
     def _run_worker(

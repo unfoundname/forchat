@@ -188,3 +188,23 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         self.log.append("worker_created", worker_id=worker_id, template=template, depth=depth,
                         parent=parent.id if parent else None, task=task, scope=chosen_scope)
         return worker
+
+    # ------------------------------------------------------------------ 资源感知
+    def resources(self) -> dict[str, Any]:
+        """当前运行还剩多少资源。派 worker 前后都该看一眼，而不是把它跑死再发现。"""
+        with self._lock:
+            remaining = max(0, self.max_total_tokens - self.total_tokens)
+            return {
+                "tokens": {
+                    "used": self.total_tokens,
+                    "limit": self.max_total_tokens,
+                    "remaining": remaining,
+                },
+                "cost_usd": {
+                    "used": round(self.total_cost_usd, 6),
+                    "limit": self.max_total_cost_usd,
+                },
+                "wall_seconds": {"limit": self.max_wall_seconds, "deadline": self.run_deadline},
+                "workers": {"created": len(self.workers), "limit": self.max_workers},
+                "concurrency": self.scheduler.stats(),
+            }

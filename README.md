@@ -232,6 +232,10 @@ worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，�
 - 事件流按 `FORCHAT_EVENT_LOG_MB`（默认 32MB）分段，关键事件 fsync；
 - `--prune` 定期清理旧运行目录。
 
+**资源感知**：每次 `spawn` 的回执、以及不带 `key` 的 `read_state`，都会带上
+`剩余总预算 N tokens / 共 M；已建 worker x/y`；宿主侧用 `Runtime.resources()` 拿到同样的结构
+（tokens/cost/wall/workers/concurrency）。整轮预算只剩 <20% 时，上下文裁剪会自动收紧并标 `tight`。
+
 ## 技能
 
 `skills/<名字>/SKILL.md`，frontmatter 只有 `name` / `description`，正文是完整指令。
@@ -472,7 +476,13 @@ python -m forchat --serve 8000
 - 绑定非本机地址**必须**设 token，否则启动直接拒绝；
 - 每 IP 每分钟 `FORCHAT_RATE_LIMIT`（默认 120）次，超了 429。
 
-它仍然只是"能用"级别：没有 TLS、没有多租户、SSE 只读当前事件段（轮转后的历史段要用 `--inspect`）。
+它仍然只是"能用"级别：没有 TLS、没有多租户。
+
+服务端行为：
+
+- 运行结束会从内存表摘掉（长跑服务不会持有所有历史 Runtime），`stop` 对已结束的运行返回 0；
+- SSE 会**按段读取**，事件流滚动后的老分段也能推；
+- 服务端自己加载 `pricing.json`（和 CLI 一致），通过 HTTP 启动的运行也有成本。
 
 ## 续跑
 

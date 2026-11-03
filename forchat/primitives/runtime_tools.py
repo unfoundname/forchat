@@ -89,7 +89,7 @@ class ToolsMixin:
         child = self._create_worker(template, task, parent=worker, depth=worker.depth + 1,
                                     scope=granted)
         if child is None:
-            return "错误：子 worker被资源或深度限制拒绝"
+            return f"错误：子 worker 被资源或深度限制拒绝{self._resource_line()}"
 
         if wait:
             self._run_worker(child)          # 内联执行，不占并发槽
@@ -103,9 +103,10 @@ class ToolsMixin:
                 extra = "\n子 worker 的派生：" + "; ".join(
                     f"{w.id}({w.template}) {w.status}" for w in grandchildren
                 )
-            return f"子 worker {child.id} 已完成，status={child.status}；report: {summary}{extra}"
+            return (f"子 worker {child.id} 已完成，status={child.status}；report: {summary}"
+                    f"{extra}{self._resource_line()}")
         self._submit(child)
-        return f"子 worker {child.id} 已在后台启动；用 wait_workers 汇合"
+        return f"子 worker {child.id} 已在后台启动；用 wait_workers 汇合{self._resource_line()}"
     def _submit(self, child: WorkerInstance) -> None:
         future = self.scheduler.submit(self._run_worker, child)
         self._futures[child.id] = future
@@ -179,11 +180,19 @@ class ToolsMixin:
         )
         self._run_hooks(worker, "on_report")
         return "report 已记录"
+    def _resource_line(self) -> str:
+        info = self.resources()
+        tokens = info["tokens"]
+        return (
+            f"（剩余总预算 {tokens['remaining']} tokens / 共 {tokens['limit']}；"
+            f"已建 worker {info['workers']['created']}/{info['workers']['limit']}）"
+        )
+
     def _tool_read_state(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         key = args.get("key")
         if key:
             return json.dumps(self.state.get(str(key), None), ensure_ascii=False)
-        return json.dumps(self.state, ensure_ascii=False)
+        return json.dumps(self.state, ensure_ascii=False) + "\n\n" + self._resource_line()
     def _tool_write_note(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         key = str(args.get("key"))
         if not key or key == "None":

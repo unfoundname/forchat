@@ -190,6 +190,67 @@ def test_stop_endpoint_stops_running_workers() -> None:
     assert status["status"] in ("killed", "failed"), status
 
 
+def test_runtimes_are_released_after_run() -> None:
+    """跑完的运行从内存表摘掉（长跑服务不能一直持有历史 Runtime）。"""
+    base = tmpdir()
+    manager = _manager(base)
+    started = manager.start("minimal", "释放自检")
+    _wait_done(manager, started["id"])
+    for _ in range(100):
+        if started["id"] not in manager._runtimes:
+            break
+        time.sleep(0.05)
+    assert started["id"] not in manager._runtimes
+    assert manager.stop(started["id"]) == 0        # 已结束，不是 404
+
+
+def test_local_pricing_applied() -> None:
+    """HTTP 服务自己也要加载价目表，否则成本永远是 null。"""
+    from forchat.pricing import Price, Pricing
+
+    base = tmpdir()
+    manager = RunManager(
+        runs_root=base / ".runs",
+        workflows_root=ROOT / "examples" / "workflows",
+        provider_factory=lambda: FakeProvider(_responder()),
+        pricing=Pricing({"fake": Price(input_per_m=1.0, output_per_m=2.0)}),
+    )
+    started = manager.start("minimal", "成本自检")
+    status = _wait_done(manager, started["id"])
+    assert status["cost_usd"] is not None and status["cost_usd"] > 0, status
+
+
+def test_sse_reads_rotated_segments() -> None:
+    """事件流滚动后，SSE 仍要能读到老分段里的事件。"""
+    base = tmpdir()
+    run_dir = base / ".runs" / "rotated-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "events.1.jsonl").write_text(
+        '{"type": "worker_created", "worker_id": "n001-root", "template": "root"}\n',
+        encoding="utf-8",
+    )
+    (run_dir / "events.jsonl").write_text(
+        '{"type": "run_finished", "status": "done"}\n', encoding="utf-8"
+    )
+
+    manager = _manager(base)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(manager))
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/runs/rotated-run/events", timeout=10
+        ) as resp:
+            body = resp.read().decode("utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert "worker_created" in body, body
+    assert "run_finished" in body, body
+    assert "[DONE]" in body
+
+
 def main() -> int:
     checks = [
         ("manager 启停与状态", test_manager_start_and_status),
@@ -197,6 +258,9 @@ def main() -> int:
         ("token 鉴权", test_auth_required_when_token_set),
         ("限流", test_rate_limit),
         ("停止端点", test_stop_endpoint_stops_running_workers),
+        ("运行结束释放内存", test_runtimes_are_released_after_run),
+        ("服务端加载价目表", test_local_pricing_applied),
+        ("SSE 读取滚动分段", test_sse_reads_rotated_segments),
     ]
     return run("HTTP/SSE 自检", checks)
 

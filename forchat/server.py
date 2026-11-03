@@ -36,6 +36,8 @@ class RunManager:
         guard: Callable[[str, str, list[str]], str | None] | None = None,
         token: str | None = None,
         rate_limit_per_min: int = 120,
+        pricing: Any | None = None,
+        keep_runtimes: int = 100,
     ) -> None:
         self.runs_root = Path(runs_root)
         self.workflows_root = Path(workflows_root)
@@ -45,6 +47,8 @@ class RunManager:
         self.guard = guard
         self.token = token
         self.rate_limit_per_min = rate_limit_per_min
+        self.pricing = pricing
+        self.keep_runtimes = max(1, keep_runtimes)
         self._threads: dict[str, threading.Thread] = {}
         self._runtimes: dict[str, Runtime] = {}
         self._rate: dict[str, tuple[float, int]] = {}
@@ -68,9 +72,22 @@ class RunManager:
             external_tools=self.external_tools_factory() if self.external_tools_factory else None,
             skill_loader=self.skill_loader,
             guard=self.guard,
+            pricing=self.pricing,
         )
 
-        thread = threading.Thread(target=runtime.start, args=(goal,), name=f"run-{run_dir.name}", daemon=True)
+        def _run_and_forget() -> None:
+            try:
+                runtime.start(goal)
+            finally:
+                # 跑完就从内存表里摘掉：长跑服务不应持有所有历史 Runtime
+                with self._lock:
+                    self._threads.pop(run_dir.name, None)
+                    self._runtimes.pop(run_dir.name, None)
+                    if len(self._runtimes) > self.keep_runtimes:
+                        for stale in sorted(self._runtimes)[: len(self._runtimes) - self.keep_runtimes]:
+                            self._runtimes.pop(stale, None)
+
+        thread = threading.Thread(target=_run_and_forget, name=f"run-{run_dir.name}", daemon=True)
         with self._lock:
             self._threads[run_dir.name] = thread
             self._runtimes[run_dir.name] = runtime
@@ -78,11 +95,11 @@ class RunManager:
         return {"id": run_dir.name, "run_dir": str(run_dir)}
 
     def stop(self, run_id: str) -> int | None:
-        """请求停止某个运行里的所有 worker；运行不存在返回 None。"""
+        """请求停止某个运行里的所有 worker；运行不存在返回 None，已结束返回 0。"""
         runtime = self._runtimes.get(run_id)
-        if runtime is None:
-            return None
-        return runtime.stop_all()
+        if runtime is not None:
+            return runtime.stop_all()
+        return 0 if (self.runs_root / run_id).is_dir() else None
 
     def allow(self, client_ip: str) -> bool:
         """极简限流：每 IP 每分钟 N 次（0 = 关闭）。"""
@@ -253,8 +270,7 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
 
         def _stream_events(self, run_id: str) -> None:
             run_dir = manager.runs_root / run_id
-            events_path = run_dir / "events.jsonl"
-            if not events_path.is_file():
+            if not (run_dir / "events.jsonl").is_file() and not list(run_dir.glob("events.*.jsonl")):
                 self._json(404, {"error": "run not found"})
                 return
 
@@ -264,16 +280,35 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
             self.send_header("Connection", "close")
             self.end_headers()
 
-            offset = 0
+            offsets: dict[str, int] = {}
+            buffers: dict[str, str] = {}
             finished = False
+
+            def segments() -> list[Path]:
+                rotated = sorted(
+                    run_dir.glob("events.*.jsonl"),
+                    key=lambda p: int(p.name.split(".")[1]) if p.name.split(".")[1].isdigit() else 0,
+                )
+                current = run_dir / "events.jsonl"
+                return rotated + ([current] if current.is_file() else [])
+
             try:
                 while True:
-                    with events_path.open("r", encoding="utf-8") as handle:
-                        handle.seek(offset)
-                        for line in handle:
+                    for path in segments():
+                        offset = offsets.get(path.name, 0)
+                        if not path.is_file() or path.stat().st_size <= offset:
+                            continue
+                        with path.open("rb") as handle:
+                            handle.seek(offset)
+                            chunk = handle.read()
+                        offsets[path.name] = offset + len(chunk)
+                        text = buffers.pop(path.name, "") + chunk.decode("utf-8", errors="replace")
+                        if not text.endswith("\n"):
+                            head, _, tail = text.rpartition("\n")
+                            text, buffers[path.name] = head + "\n", tail
+                        for line in text.splitlines():
                             if not line.strip():
                                 continue
-                            offset += len(line.encode("utf-8"))
                             self.wfile.write(b"data: " + line.encode("utf-8") + b"\n\n")
                             if '"type": "run_finished"' in line:
                                 finished = True
@@ -310,11 +345,13 @@ def serve(
 
 def _default_manager() -> RunManager:
     from .policy import Policy
+    from .pricing import Pricing
     from .providers.deepseek import DeepSeekProvider
     from .providers.retry import RetryProvider
     from .tool_bridge import build as build_tools, build_skill_loader
 
     root = Path.cwd()
+    pricing = Pricing.load()
     return RunManager(
         runs_root=root / ".runs",
         workflows_root=root / "examples" / "workflows",
@@ -322,6 +359,7 @@ def _default_manager() -> RunManager:
         external_tools_factory=build_tools,
         skill_loader=build_skill_loader(),
         guard=Policy(root).check,
+        pricing=pricing if pricing.known() else None,
         token=os.environ.get("FORCHAT_SERVER_TOKEN") or None,
         rate_limit_per_min=int(os.environ.get("FORCHAT_RATE_LIMIT", 120)),
     )

@@ -388,6 +388,60 @@ def test_thinking_logging_is_opt_in() -> None:
             os.environ["FORCHAT_LOG_THINKING"] = old
 
 
+def test_resources_visible_to_worker() -> None:
+    """read_state 要带资源余量，模型派活前能看见。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    provider = FakeProvider(
+        TemplateResponder(
+            {
+                "root": [
+                    tool_chunks([("read_state", {})]),
+                    tool_chunks([("report", {"summary": "ok"})]),
+                ]
+            }
+        )
+    )
+    runtime = Runtime(workflow, provider, tmpdir())
+    runtime.start("任务")
+    results = [event.get("result", "") for event in runtime.log.query(type="tool_result")]
+    assert any("剩余总预算" in item for item in results), results
+
+
+def test_context_trim_tightens_when_budget_low() -> None:
+    """整轮预算剩下 <20% 时，裁剪要收紧并标记 tight。"""
+    import os
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["limits"] = {"max_total_tokens": 200, "max_wall_seconds": 600}
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    turns = [tool_chunks([("read_state", {})]) for _ in range(20)]
+    turns.append(tool_chunks([("report", {"summary": "ok"})]))
+    provider = FakeProvider(TemplateResponder({"root": turns}))
+
+    old = os.environ.get("FORCHAT_CONTEXT_MESSAGES")
+    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "6"
+    try:
+        runtime = Runtime(workflow, provider, tmpdir())
+        runtime.start("任务")
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_CONTEXT_MESSAGES", None)
+        else:
+            os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
+
+    trimmed = runtime.log.query(type="context_trimmed")
+    assert any(event.get("tight") for event in trimmed), trimmed
+
+
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),
@@ -405,6 +459,8 @@ def main() -> int:
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
         ("长会话上下文裁剪", test_context_trimmed_for_long_sessions),
         ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
+        ("资源余量可见", test_resources_visible_to_worker),
+        ("预算低时裁剪收紧", test_context_trim_tightens_when_budget_low),
     ]
     return run("原语流程自检", checks)
 
