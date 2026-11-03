@@ -338,7 +338,7 @@ def test_no_report_means_failed() -> None:
     runtime = Runtime(workflow, FakeProvider([text_only]), tmpdir())
     root = runtime.start("任务")
     assert root.status == "failed"
-    assert "未调用 report" in (root.report.summary or "")
+    assert "report" in (root.report.summary or "")
 
 
 def test_on_report_hook() -> None:

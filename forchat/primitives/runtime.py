@@ -211,6 +211,8 @@ class Runtime:
         messages = self._initial_messages(worker, tpl)
         reason = "max_rounds"
         last_charge = started
+        last_text = ""
+        reported = False
 
         for rnd in range(1, tpl.max_rounds + 1):
             # 墙钟要按轮次记账，否则 wall_seconds 只有在 worker 结束后才生效
@@ -230,11 +232,10 @@ class Runtime:
 
             text, calls, usage = self._stream_round(worker, tpl, messages, rnd)
             worker.budget.charge(tokens=usage)
+            last_text = text
 
             if not calls:
                 reason = "stop"
-                if worker.report is None:
-                    worker.report = self._fallback_report(worker, text)
                 break
 
             messages.append(
@@ -254,15 +255,16 @@ class Runtime:
 
             if worker.report is not None:
                 # report 是显式的完成信号：本轮结束，不再请求下一轮
+                reported = True
                 reason = "stop"
                 break
 
         worker.budget.charge(seconds=time.time() - last_charge)
-        self._finish(worker, reason, reported=worker.report is not None)
+        self._finish(worker, reason, reported=reported, last_text=last_text)
 
-    def _finish(self, worker: WorkerInstance, reason: str, reported: bool) -> None:
+    def _finish(self, worker: WorkerInstance, reason: str, reported: bool, last_text: str = "") -> None:
         if worker.report is None:
-            worker.report = self._fallback_report(worker, "")
+            worker.report = self._fallback_report(worker, last_text)
         # 只有真的调用过 report 才算完成；跑满轮次/超预算/只说话不交报告都不算
         worker.report.status = "done" if reported else "failed"
         worker.report.budget = worker.budget.snapshot()

@@ -13,11 +13,13 @@
 1. **三层**：原语 / workflow 配置 / 运行输入。领域词只允许出现在运行输入里，仓库内为零。
 2. **唯一执行循环**：`forchat/primitives/runtime.py` 是全项目唯一处理 `tool_calls` 累积与
    `finish_reason` 的地方。旧实现（`agent.py`）与草案契约（`core/contracts.py`）已删除。
-3. **报告即完成信号**：模型调用 `report` 后本轮立即结束，不再请求下一轮。
+3. **报告即完成信号**：模型调用 `report` 后本轮立即结束，不再请求下一轮。没调用 `report`
+   的 worker 一律记为 `failed`——只说话不交报告不算完成，避免"看起来都做完了"。
 4. **等待型子 worker 内联执行**：`spawn(wait=True)` 在父 worker 线程内执行，不占并发槽；
    否则 `max_concurrent=1` 时父 worker 占槽等子 worker 会死锁。
 5. **围栏优于熔断**：递归靠 `can_spawn` 为空来杜绝（能力围栏），层数与 worker 数量只是兜底。
-6. **机械守卫**：`tests/test_layering.py` 检查依赖方向、领域词、唯一循环。
+6. **状态落盘**：`plan` / 笔记写进运行目录的 `state.json`，重启或续跑读回来，不靠对话记忆。
+7. **机械守卫**：`tests/test_layering.py` 检查依赖方向、领域词、唯一循环。
 
 ## 后果
 
