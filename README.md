@@ -485,17 +485,17 @@ python -m forchat --serve 8000
 续跑语义是「继续推进这个项目」，不是复活死掉的 worker：历史 worker 只读、新 worker 序号接着涨，
 根 worker 的系统提示里会带上历史摘要（全文用 `read_worker_report` 查）。
 
-**崩溃恢复**：上次进程被杀时没有 `worker_done` 的 worker 会被标成 `interrupted`，
-`--resume` 会把它们的**任务原文**列进根提示与命令行，由模型决定重新派发还是接手。
+**崩溃恢复（自动）**：`--resume` 现在会从每轮快照恢复整棵树——
 
-**断点续跑**：每个 worker **每轮**都会把 `messages` 落一份快照（`workers/<id>.json`），
-所以崩溃后可以针对性继续：
+- 没有 `worker_done` 的 worker 若有快照，会从断点继续，**深的先恢复**（父的后续轮次才能看到子报告）；
+- 根自己中断且快照存在 → 直接续跑根（保住它自己的对话与未完成的决策），不再新起一个根；
+- 根没中断 → 起一个新根，历史 worker 作为只读上下文。
+
+**单点续跑**：也可以点名恢复某个 worker（事件追加在同一条流里）：
 
 ```powershell
 python -m forchat --resume-worker .runs/<run> n002-coder
 ```
-
-它用快照里的消息历史继续对话（不是开新会话），事件追加在同一条流里。
 
 ## 学习路径
 

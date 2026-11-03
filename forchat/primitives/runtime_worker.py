@@ -48,12 +48,16 @@ class WorkerMixin:
             chars=sum(len(str(item.get("content") or "")) for item in messages),
         )
 
-    def _run_worker(self, worker: WorkerInstance, resume: dict | None = None) -> None:
+    def _run_worker(
+        self, worker: WorkerInstance, resume: dict | None = None, run_hooks: bool = True
+    ) -> None:
         tpl = self.wf.workers[worker.template]
         worker.status = "running"
         started = time.time()
         self.log.append("worker_started", worker_id=worker.id, template=worker.template, depth=worker.depth)
-        self._run_hooks(worker, "on_start")
+        if run_hooks:
+            # 续跑时不重放 on_start：它上次已经跑过，重放会重复派生
+            self._run_hooks(worker, "on_start")
 
         messages = self._initial_messages(worker, tpl)
         reason = "stop"

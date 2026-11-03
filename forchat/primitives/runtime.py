@@ -83,6 +83,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         self.started_at = time.time()
         self._restored: list[str] = []
         self._interrupted: list[str] = []
+        self._root_id: str | None = None
         self._restore()
     def _deadline_exceeded(self) -> bool:
         return self.run_deadline is not None and time.time() > self.run_deadline

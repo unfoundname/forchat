@@ -32,6 +32,8 @@ class StateMixin:
                     parent_id=event.get("parent"),
                     depth=int(event.get("depth", 0)),
                 )
+                if event.get("parent") is None and self._root_id is None:
+                    self._root_id = wid
             elif kind == "worker_done" and wid in self.workers:
                 self.workers[wid].status = event.get("status", "failed")
             elif kind == "report" and wid in self.workers:
@@ -71,6 +73,38 @@ class StateMixin:
     def interrupted(self) -> list[str]:
         """上次运行中断（没有 worker_done）的 worker id。"""
         return list(self._interrupted)
+
+    def auto_resume(self, task: str | None = None) -> WorkerInstance | None:
+        """崩溃恢复整棵树：先恢复中断的子 worker（深→浅），再恢复根。
+
+        - 根有快照且中断 → 直接续跑根（保住它自己的对话与未完成的决策）；
+        - 根没中断 → 起一个新根，历史 worker 作为只读上下文。
+        """
+        if self.run_deadline is None:
+            self.run_deadline = time.time() + self.max_wall_seconds
+
+        root = self.workers.get(self._root_id) if self._root_id else None
+        targets = [
+            item for item in self.workers.values()
+            if item.status == "interrupted" and self._worker_state_path(item.id).is_file()
+        ]
+        targets.sort(key=lambda item: -item.depth)      # 深的先恢复，父的后续轮次才能看到子报告
+
+        resumed: list[str] = []
+        for item in targets:
+            if root is not None and item.id == root.id:
+                continue
+            try:
+                self.resume_worker(item.id)
+                resumed.append(item.id)
+            except KeyError:
+                continue
+
+        self.log.append("auto_resume", resumed=resumed, root=self._root_id,
+                        interrupted=len(self._interrupted))
+        if root is not None and root.status == "interrupted":
+            return self.resume_worker(root.id)
+        return self.start(task or "继续推进该项目：先 read_state 看历史 plan 与笔记")
     def _load_state(self) -> dict[str, Any]:
         if not self.state_path.is_file():
             return {}
@@ -127,5 +161,5 @@ class StateMixin:
         if self.run_deadline is None:
             self.run_deadline = time.time() + self.max_wall_seconds
         self.log.append("worker_resumed", worker_id=worker_id, round=state.get("round", 0))
-        self._run_worker(worker, resume=state)
+        self._run_worker(worker, resume=state, run_hooks=False)
         return worker

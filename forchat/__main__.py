@@ -157,16 +157,18 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     )
 
 
-def _execute(workflow: WorkflowDef, run_dir: Path, goal: str, label: str = "run") -> int:
+def _execute(
+    workflow: WorkflowDef, run_dir: Path, goal: str, label: str = "run", resume: bool = False
+) -> int:
     runtime = _assemble(workflow, run_dir)
     print(f"[{label}] workflow={workflow.name} entry={workflow.entry} dir={run_dir}")
     if runtime.interrupted:
         names = ", ".join(runtime.interrupted[:5])
         more = f" 等 {len(runtime.interrupted)} 个" if len(runtime.interrupted) > 5 else ""
-        print(f"[{label}] 上次中断的 worker：{names}{more}（会在根提示里列出，交给模型重新派发）")
+        print(f"[{label}] 上次中断的 worker：{names}{more}（从快照恢复）")
 
     try:
-        root = runtime.start(goal)
+        root = runtime.auto_resume(goal) if resume else runtime.start(goal)
     except KeyboardInterrupt:
         print("\n[abort] 被中断，事件流已落盘，可用 Replay 复查")
         return 130
@@ -228,7 +230,7 @@ def _resume(run_dir: Path, goal: str) -> int:
     except WorkflowError as exc:
         print(f"workflow 快照有误：{exc}")
         return 2
-    return _execute(workflow, run_dir, goal, label="resume")
+    return _execute(workflow, run_dir, goal, label="resume", resume=True)
 
 
 def _resume_worker(run_dir: Path, worker_id: str) -> int:

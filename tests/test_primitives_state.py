@@ -242,11 +242,67 @@ def test_total_budget_caps_whole_run() -> None:
 
 
 
+def test_auto_resume_restores_tree_from_snapshots() -> None:
+    """崩溃后 --resume：根从快照续跑，已完成的分支不重跑。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["spawn", "report", "read_state"]
+    raw["workers"]["root"]["can_spawn"] = ["coder"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    run_dir = tmpdir()
+    first = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("spawn", {"template": "coder", "task": "子任务", "wait": False})]),
+                tool_chunks([("report", {"summary": "原来就完成"})]),
+            ],
+            "coder": [tool_chunks([("report", {"summary": "子完成"})])],
+        }
+    )
+    original = Runtime(workflow, FakeProvider(first), run_dir)
+    original.start("根任务")
+    assert original.workers["n001-root"].status == "done"
+    assert original.workers["n002-coder"].status == "done"
+
+    # 模拟进程崩溃：抹掉根的结束事件，但保留每轮快照
+    events_path = run_dir / "events.jsonl"
+    kept = []
+    for line in events_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        if event.get("worker_id") == "n001-root" and event.get("type") in ("worker_done", "report"):
+            continue
+        kept.append(line)
+    events_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+    second = TemplateResponder(
+        {"root": [tool_chunks([("report", {"summary": "恢复后完成"})])]}
+    )
+    resumed = Runtime(workflow, FakeProvider(second), run_dir)
+    assert resumed.interrupted == ["n001-root"], resumed.interrupted
+
+    root = resumed.auto_resume("继续")
+    assert root is not None and root.id == "n001-root"
+    assert root.status == "done"
+    assert root.report.summary == "恢复后完成"
+    assert resumed.log.query(type="auto_resume")
+    # 已完成的分支没有被重新创建
+    created = [
+        event for event in resumed.log.read()
+        if event.get("type") == "worker_created" and event.get("worker_id") == "n002-coder"
+    ]
+    assert len(created) == 1
+
+
 def main() -> int:
     checks = [
         ("并发=1 时串行", test_runtime_serial_when_concurrency_one),
         ("续跑恢复历史 worker", test_resume_restores_workers_and_seq),
         ("附件自动进报告", test_artifact_indexed_into_report),
+        ("崩溃后自动恢复整棵树", test_auto_resume_restores_tree_from_snapshots),
         ("provider 异常只失败单个 worker", test_provider_error_fails_only_worker),
         ("summary 合计行", test_summary_has_totals),
         ("预算围栏", test_budget_fence),
