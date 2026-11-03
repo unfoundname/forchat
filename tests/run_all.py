@@ -16,6 +16,7 @@ STEPS = [
     ("原语自检", [sys.executable, "tests/test_primitives.py"]),
     ("工具与安全自检", [sys.executable, "tests/test_tools.py"]),
     ("CLI 自检", [sys.executable, "tests/test_cli.py"]),
+    ("HTTP/SSE 自检", [sys.executable, "tests/test_server.py"]),
     ("分层校验", [sys.executable, "tests/test_layering.py"]),
     ("端到端 demo", [sys.executable, "examples/run_demo.py"]),
     ("MCP 自检", [sys.executable, "examples/smoke_mcp.py"]),

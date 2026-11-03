@@ -384,6 +384,23 @@ root
 也就是说：**模型会为了让提交信息更好看，去写 worktree 之外的临时文件**——这正是你担心的"处理到别的范围"，
 在 10 分支压力下被 scope 挡住了。
 
+## HTTP/SSE 服务
+
+```powershell
+python -m forchat --serve 8000
+```
+
+| 接口 | 说明 |
+|---|---|
+| `GET /health` | 存活 |
+| `GET /runs` | 运行列表（同 `--runs`） |
+| `POST /runs` | `{"workflow": "minimal", "goal": "..."}` → `202 {"id", "run_dir"}` |
+| `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告 |
+| `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
+
+只依赖标准库，默认绑定 `127.0.0.1`，**没有鉴权**——鉴权/多租户/限流属于部署层
+（反向代理 + token），不要直接暴露公网。
+
 ## 续跑
 
 `python -m forchat` 会把整个 workflow 包快照进运行目录（`workflow.json` + `prompts/`），

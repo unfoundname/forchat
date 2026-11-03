@@ -31,6 +31,7 @@ USAGE = """用法:
   python -m forchat --mcp       连接 mcp_servers.json 里的服务端
   python -m forchat --inspect <run-dir>   复查一次历史运行
   python -m forchat --runs      列出历史运行（状态/worker 数/token/耗时）
+  python -m forchat --serve [port]       启动 HTTP/SSE 服务（默认 8000，仅绑定本机）
   python -m forchat --check <workflow>   只校验 workflow 配置，不跑模型
   python -m forchat --resume <run-dir> [目标]   在同一个运行目录上继续推进
 """
@@ -245,6 +246,12 @@ def main() -> None:
         clients = connect_from_config()
         print(f"已连接 {len(clients)} 个服务端" if clients else "没有连上任何 MCP 服务端")
         close_all()
+        return
+    if args and args[0] == "--serve":
+        port = int(args[1]) if len(args) > 1 else 8000
+        from .server import serve
+
+        serve(port=port)
         return
     if args and args[0] == "--runs":
         raise SystemExit(_list_runs())
