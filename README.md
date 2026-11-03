@@ -11,7 +11,8 @@ ForChat/
 ├── CONTEXT.md                  领域词汇表：三层、worker、fence、report…
 ├── docs/
 │   ├── decisions/              ADR
-│   └── sandbox.md              部署层隔离清单（容器/挂载/网络/cgroup/secrets）
+│   ├── sandbox.md              部署层隔离清单（容器/挂载/网络/cgroup/secrets）
+│   └── release.md              发布说明：能力清单、真跑证据索引、已知边界
 ├── forchat/
 │   ├── __main__.py             CLI：只装配，不执行
 │   ├── primitives/             ★ 原语层（唯一执行循环在这里）
