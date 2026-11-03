@@ -130,16 +130,13 @@ TOOL_SPECS: dict[str, dict] = {
         "type": "function",
         "function": {
             "name": "restart",
-            "description": "父 worker 把自己某个直接子 worker 用同一模板/任务/范围重开为全新 agent"
-                           "（不带旧对话）。上下文涣散、越跑越差时，比继续喂它更划算。",
+            "description": "把**你自己**重启：清空当前对话，用同一个 worker 实例、同一模板/范围重新开始"
+                           "（事实库保留）。上下文涣散、越跑越差时用它，比继续喂更划算。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "worker_id": {"type": "string", "description": "要重开的直接子 worker"},
-                    "task": {"type": "string", "description": "新任务；省略则沿用原任务"},
-                    "wait": {"type": "boolean", "description": "是否等它跑完，默认 true"},
+                    "task": {"type": "string", "description": "重启后的任务；省略则沿用当前任务"},
                 },
-                "required": ["worker_id"],
             },
         },
     },

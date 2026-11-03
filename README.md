@@ -178,10 +178,10 @@ examples/workflows/minimal/
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
 `read_worker_report`（父 worker 回看子报告）、`wait_workers`（汇合 `spawn(wait=false)` 的异步分支）、
 `stop_worker`（协作式叫停：下一分片/下一轮边界退出，状态记为 `killed`）、
-`restart`（同模板/任务/范围全新开一个 agent，丢掉旧对话——上下文涣散时比硬喂更划算）、
+`restart`（把**自己**重启：同一个 worker 实例、清空对话、事实保留——上下文涣散时比硬喂更划算）、
 `write_fact` / `read_facts`（跨 agent 的共享事实库，落盘 `state.json`，新 agent 的系统提示里自动带）。
 
-**agent 生命周期**：`spawn` 新开、`restart` 由父 worker 重开自己的直接子 worker（全新会话）、`stop_worker` 叫停；
+**agent 生命周期**：`spawn` 新开、`restart` 自己重启自己（同实例、清空对话）、`stop_worker` 叫停；
 **事实库**是"重启也不丢"的那一层：`write_fact("构建命令", "pytest -q")` 之后，`restart`/`--resume` 出的
 agent 在系统提示里都能看到它，不必靠对话记忆。
 

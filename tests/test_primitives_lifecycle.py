@@ -1,4 +1,4 @@
-"""原语生命周期自检：restart（父 worker 对自己直接子 worker）+ 每 worker 事实。"""
+"""原语生命周期自检：worker 自重启（同实例、清空对话、事实保留）+ 每 worker 事实。"""
 from __future__ import annotations
 
 import copy
@@ -50,14 +50,14 @@ def test_worker_facts_are_per_worker_and_persist() -> None:
     assert reopened.load_facts("n002-coder") == {"构建命令": "pytest -q"}
 
 
-def test_restart_inherits_worker_facts() -> None:
-    """restart 是父 worker 决定：新实例的系统提示里带该 worker 原有事实。"""
+def test_restart_is_self_and_reuses_instance() -> None:
+    """restart 是 worker 自己重启自己：不新增 worker，清空对话，事实保留。"""
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["spawn", "restart", "report"]
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
     raw["workers"]["root"]["can_spawn"] = ["coder"]
     raw["workers"]["root"]["hooks"] = {}
     raw["workers"]["coder"]["hooks"] = {}
-    raw["workers"]["coder"]["tools"] = ["write_fact", "report"]
+    raw["workers"]["coder"]["tools"] = ["write_fact", "restart", "report"]
     workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
 
     inner = FakeProvider(
@@ -65,13 +65,12 @@ def test_restart_inherits_worker_facts() -> None:
             {
                 "root": [
                     tool_chunks([("spawn", {"template": "coder", "task": "写事实"})]),
-                    tool_chunks([("restart", {"worker_id": "n002-coder"})]),
                     tool_chunks([("report", {"summary": "根完成"})]),
                 ],
                 "coder": [
                     tool_chunks([("write_fact", {"name": "构建命令", "content": "pytest -q"})]),
-                    tool_chunks([("report", {"summary": "第一代"})]),
-                    tool_chunks([("report", {"summary": "第二代"})]),
+                    tool_chunks([("restart", {})]),
+                    tool_chunks([("report", {"summary": "重启后完成"})]),
                 ],
             }
         )
@@ -89,18 +88,25 @@ def test_restart_inherits_worker_facts() -> None:
     runtime = Runtime(workflow, Recording(inner), tmpdir())
     runtime.start("任务")
 
-    with_facts = [
+    coder = runtime.workers["n002-coder"]
+    assert coder.status == "done"
+    assert coder.report.summary == "重启后完成"
+    assert len(runtime.workers) == 2                      # 没有新增 worker
+    assert runtime.log.query(type="worker_restarted")
+
+    coder_calls = [
         call for call in runtime.provider.calls
-        if "你的事实" in str(call[0]["content"])
+        if any("模板 coder" in str(message) for message in call)
     ]
-    assert with_facts, "restart 的 agent 系统提示里应当带事实"
-    assert "pytest -q" in with_facts[-1][0]["content"]
+    after_restart = coder_calls[-1]
+    assert len(after_restart) == 2                        # system + task，旧对话没了
+    assert "pytest -q" in after_restart[0]["content"]     # 事实保留
 
 
-def test_restart_only_from_parent() -> None:
-    """restart 只能由父 worker 发起：同级 worker 会被拒。"""
+def test_restart_can_replace_task() -> None:
+    """restart(task=...) 用新任务重开同一个 worker。"""
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["spawn", "wait_workers", "report"]
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
     raw["workers"]["root"]["can_spawn"] = ["coder"]
     raw["workers"]["root"]["hooks"] = {}
     raw["workers"]["coder"]["hooks"] = {}
@@ -111,15 +117,12 @@ def test_restart_only_from_parent() -> None:
         TemplateResponder(
             {
                 "root": [
-                    tool_chunks([("spawn", {"template": "coder", "task": "a", "wait": False}),
-                                 ("spawn", {"template": "coder", "task": "b", "wait": False})]),
-                    tool_chunks([("wait_workers", {"timeout_seconds": 20})]),
+                    tool_chunks([("spawn", {"template": "coder", "task": "旧任务"})]),
                     tool_chunks([("report", {"summary": "根完成"})]),
                 ],
                 "coder": [
-                    tool_chunks([("restart", {"worker_id": "n003-coder"})]),
-                    tool_chunks([("report", {"summary": "a 完成"})]),
-                    tool_chunks([("report", {"summary": "b 完成"})]),
+                    tool_chunks([("restart", {"task": "新任务"})]),
+                    tool_chunks([("report", {"summary": "新任务完成"})]),
                 ],
             }
         )
@@ -127,15 +130,16 @@ def test_restart_only_from_parent() -> None:
     runtime = Runtime(workflow, provider, tmpdir())
     runtime.start("任务")
 
-    results = [event.get("result", "") for event in runtime.log.query(type="tool_result")]
-    assert any("只能由父 worker" in item for item in results), results
+    coder = runtime.workers["n002-coder"]
+    assert coder.task == "新任务"
+    assert coder.report.summary == "新任务完成"
 
 
 def main() -> int:
     checks = [
         ("每 worker 事实、长期保存", test_worker_facts_are_per_worker_and_persist),
-        ("restart 继承事实", test_restart_inherits_worker_facts),
-        ("restart 只能父发起", test_restart_only_from_parent),
+        ("restart 同实例自重启", test_restart_is_self_and_reuses_instance),
+        ("restart 可换任务", test_restart_can_replace_task),
     ]
     return run("原语生命周期自检", checks)
 

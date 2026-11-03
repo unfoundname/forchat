@@ -119,3 +119,5 @@ class WorkerInstance:
     retries_used: int = 0
     # 事实归属：restart 复用同一个 worker 的事实；空 = 自己
     facts_owner: str = ""
+    # 本轮结束后重置对话（worker 自己调用 restart）
+    restart_requested: bool = False

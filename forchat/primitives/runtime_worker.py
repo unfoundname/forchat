@@ -168,6 +168,17 @@ class WorkerMixin:
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
 
             self._save_worker_state(worker, messages, rnd, reported)
+            if worker.restart_requested:
+                # 同一个 worker 实例自重启：清空对话，事实保留
+                worker.restart_requested = False
+                messages = self._initial_messages(worker, tpl)
+                rnd = 0
+                reported = False
+                worker.report = None
+                last_text = ""
+                last_charge = time.time()
+                self.log.append("worker_restarted", worker_id=worker.id, task=worker.task[:120])
+                continue
             if worker.report is not None:
                 # report 是显式的完成信号：本轮结束，不再请求下一轮
                 reported = True

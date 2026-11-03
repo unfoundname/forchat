@@ -119,28 +119,14 @@ class ToolsMixin:
         self._futures[child.id] = future
 
     def _tool_restart(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
-        target = self.workers.get(str(args.get("worker_id") or ""))
-        if target is None:
-            return f"错误：没有 worker {args.get('worker_id')}"
-        if target.parent_id != worker.id:
-            return (f"错误：restart 只能由父 worker 对自己**直接子** worker 发起"
-                    f"（{target.id} 的父是 {target.parent_id or '根'}，不是你）")
-        if target.template not in tpl.can_spawn:
-            return f"错误：{tpl.name} 不能派生 {target.template}"
-
-        task = str(args.get("task") or target.task)
-        child = self._create_worker(target.template, task, parent=worker,
-                                    depth=worker.depth + 1, scope=target.scope or None)
-        if child is None:
-            return f"错误：restart 被资源限制拒绝{self._resource_line()}"
-        self.log.append("worker_restarted", worker_id=child.id, source=target.id, by=worker.id)
-        child.facts_owner = self.facts_owner(target)   # 同一个逻辑 worker，事实沿用
-        if bool(args.get("wait", True)):
-            self._run_worker(child)                 # 全新会话，不带旧对话
-            summary = (child.report.summary if child.report else "")[:300]
-            return f"restart {child.id} 完成，status={child.status}；report: {summary}"
-        self._submit(child)
-        return f"restart {child.id} 已在后台启动；用 wait_workers 汇合"
+        """自己重启自己：同一个 worker 实例，清空对话，事实保留。"""
+        new_task = str(args.get("task") or "").strip()
+        if new_task:
+            worker.task = new_task
+        worker.restart_requested = True
+        self.log.append("worker_restart_requested", worker_id=worker.id,
+                        task=worker.task[:120])
+        return "已请求重启本 worker：本轮结束后清空对话重新开始（事实保留）"
 
     def _tool_write_fact(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         name = str(args.get("name") or "").strip()

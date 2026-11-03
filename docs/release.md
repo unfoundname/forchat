@@ -19,7 +19,7 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 
 | 面 | 内容 |
 |---|---|
-| 执行 | `spawn`（含 `paths` 授权）、`restart`（父 worker 重开直接子 worker，全新会话）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
+| 执行 | `spawn`（含 `paths` 授权）、`restart`（worker 自重启：同实例、清空对话、事实保留）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
 | 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限；**预算只记账不中断**（超了继续跑，整轮超了只拦新派生） |
 | 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（子命令白名单）+ MCP 工具 |
 | 记忆 | 每 worker 一份事实库：`write_fact` / `read_facts`，落盘 `facts/<worker>.json`（可用 `FORCHAT_FACTS_DIR` 指到长期目录）；restart 沿用、新 agent 系统提示自动带 |
