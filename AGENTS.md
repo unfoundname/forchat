@@ -44,6 +44,7 @@ python examples/run_demo.py         # 端到端：假 provider 跑一次完整�
 
 - **subprocess 捕获输出必须显式 `encoding="utf-8", errors="replace"`**：Windows 默认按 GBK 解码子进程输出，遇到 UTF-8 中文会抛 `UnicodeDecodeError`（本仓库已踩过一次，`run_python` 和 `--check` 的测试都显式传了）。
 - **不要用 PowerShell 管道改仓库里的文本文件**：`Get-Content | Set-Content` 会按 GBK 读、UTF-8 写，中文直接变乱码（README 踩过）。改文件用编辑工具，别走 shell 管道。
+- **提交前先看 `git status`，不要闭眼 `git add -A`**：真跑会在仓库根留下 `stats.py`、`_n002_selfcheck.py` 这类残留，`add -A` 会把它们带进提交（踩过两次）。运行产物应落在 `.runs/` 或 `examples/projects/` 下。
 
 ## 提交前
 

@@ -205,7 +205,8 @@ provider 的两个硬参数（真模型）：
 - **一次只合一个**功能分支（`git merge feat-a --no-edit`、再 `git merge feat-b --no-edit`），让每次冲突单独可见；
 - 合完核对文件与 log 再 report；不碰 master、不 push，冲突则 `merge --abort` 并写进 `unresolved`。
 
-真跑过一次：`feat-a`、`feat-b` 依次合入 integration，两个 merge 提交（`6376851`、`665445a`），无冲突。
+真跑过一次：`feat-a`（stats.py，28 用例）与 `feat-b`（io_utils.py，21 用例）依次合入 integration
+（`43862b6`、`b31baa2`），无冲突；合并后在 integration 上复跑两套测试都是 `OK`，master 未被触碰。
 
 ## 用一个真项目验证（示例）
 
