@@ -35,6 +35,8 @@ ForChat/
 │   ├── skills/                 技能加载（SKILL.md）
 │   ├── server.py               HTTP/SSE/metrics/artifacts 路由
 │   ├── server_manager.py       RunManager：列表/状态/图/附件/停止/替换/缓存
+│   ├── exec.py                 唯一进程出口（脱敏/沙箱/取消/Job 限额）
+│   ├── sandbox_win.py          Windows ACL 写沙箱（受限令牌 + Low 完整性）
 │   ├── stream_exec.py          请求级子进程（可 kill 的模型流）
 │   ├── stream_child.py         子进程入口（python -m forchat.stream_child）
 │   ├── worker_proc.py          整 worker 子进程入口（python -m forchat.worker_proc）
@@ -51,19 +53,23 @@ ForChat/
 │   ├── run_all.py              一条命令跑全部本地检查
 │   ├── _support.py             共享夹具：MINIMAL、tmpdir、用例执行器
 │   ├── test_primitives.py      预算/配置校验/跨进程事件流/工具日志（14 条）
-│   ├── test_primitives_flows.py    派生/hook/并发/契约冻结/report 门禁（15 条）
+│   ├── test_primitives_flows.py    派生/hook/并发/契约冻结/report 门禁（16 条）
 │   ├── test_primitives_resources.py compact/资源感知/排队/心跳/看门狗（10 条）
 │   ├── test_primitives_lifecycle.py restart/每 worker 事实（3 条）
 │   ├── test_primitives_state.py    状态/续跑/自动恢复/运行图（11 条）
-│   ├── test_primitives_guards.py   scope/停止/快照/重试（8 条）
+│   ├── test_primitives_guards.py   scope/停止/快照/重试/预算硬闸（11 条）
 │   ├── test_tools.py           registry/provider/重试/成本/read/edit/grep/glob（18 条）
 │   ├── test_policy.py          policy/scope/脱敏/备份（8 条）
 │   ├── test_cli.py             --check/--inspect/--runs/--prune（7 条）
 │   ├── test_server.py          HTTP/SSE/metrics/artifacts/强停（13 条）
-│   ├── test_subproc.py         超时/脱敏/内存上限/取消 kill（5 条）
+│   ├── test_subproc.py         超时/脱敏/内存/取消（5 条）
 │   ├── test_stream.py          请求级子进程 / 超时硬杀 / 取消硬杀（3 条）
-│   ├── test_process_worker.py  叶子 worker 子进程执行 / 子进程硬杀（2 条）
-│   ├── test_web.py             web_search / 视觉标记（3 条）
+│   ├── test_process_worker.py  叶子 worker 子进程执行 / 硬杀（2 条）
+│   ├── test_sandbox_win.py     Windows ACL 沙箱（4 条，非 Windows 跳过）
+│   ├── test_exec.py            进程出口：脱敏 / 按 worker kill（2 条）
+│   ├── test_concurrency.py     原子写 / 乐观并发（4 条）
+│   ├── test_locks.py           写锁：等锁/超时/跨进程（3 条）
+│   ├── test_web.py             web_search/视觉/SSRF 边界（8 条）
 │   └── test_layering.py        依赖方向 / 领域词 / 唯一循环 / 单文件 ≤500 行
 ├── skills/                     技能目录（数据）
 └── mcp_servers.json            MCP 服务端配置
@@ -88,7 +94,7 @@ python tests/test_primitives_flows.py      # 原语：派生/hook/并发
 python tests/test_primitives_resources.py  # 原语：compact/资源/排队/心跳
 python tests/test_primitives_lifecycle.py  # 原语：restart/事实
 python tests/test_primitives_state.py      # 原语：状态/续跑/运行图
-python tests/test_primitives_guards.py     # 原语：scope/停止/快照/重试
+python tests/test_primitives_guards.py     # 原语：scope/停止/快照/重试/预算硬闸
 python tests/test_tools.py                 # 工具：registry/provider/重试/成本
 python tests/test_policy.py                # 安全：policy/scope/脱敏/备份
 python tests/test_cli.py                   # CLI：--check/--inspect/--runs/--prune
@@ -96,7 +102,12 @@ python tests/test_server.py                # HTTP/SSE/metrics/artifacts/强停
 python tests/test_subproc.py               # 受限子进程：超时/脱敏/取消
 python tests/test_stream.py                # 请求级子进程硬中断
 python tests/test_process_worker.py        # 整 worker 进程化硬杀
-python tests/test_web.py                   # web_search/视觉标记
+python tests/test_web.py                   # web_search/视觉/SSRF 边界
+python tests/test_process_worker.py        # 整 worker 进程化硬杀
+python tests/test_sandbox_win.py           # Windows ACL 沙箱（非 Windows 跳过）
+python tests/test_exec.py                  # 进程唯一出口
+python tests/test_concurrency.py           # 原子写/乐观并发
+python tests/test_locks.py                 # 跨进程写锁
 python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
 ```
 

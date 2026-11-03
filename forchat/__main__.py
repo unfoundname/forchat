@@ -23,6 +23,15 @@ from .primitives import EventLog, Replay, Runtime, WorkflowDef, WorkflowError
 
 DEFAULT_WORKFLOW = Path("examples/workflows/minimal/workflow.json")
 
+
+def _version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("forchat")
+    except Exception:                            # noqa: BLE001
+        return "0.2.0"
+
 USAGE = """用法:
   python -m forchat [目标]
   python -m forchat --workflow <path> [目标]
@@ -36,6 +45,7 @@ USAGE = """用法:
   python -m forchat --check <workflow>   只校验 workflow 配置，不跑模型
   python -m forchat --resume <run-dir> [目标]   在同一个运行目录上继续推进
   python -m forchat --resume-worker <run-dir> <worker-id>   从执行快照继续某个 worker
+  python -m forchat --version   打印版本
 """
 
 
@@ -287,6 +297,9 @@ def main() -> None:
 
     if args and args[0] in ("-h", "--help"):
         print(USAGE)
+        return
+    if args and args[0] in ("-V", "--version"):
+        print(f"forchat {_version()}")
         return
     if args and args[0] == "--tools":
         _list_tools()

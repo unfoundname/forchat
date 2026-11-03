@@ -65,6 +65,7 @@ class Budget:
     def snapshot(self) -> dict[str, Any]:
         return {
             "tokens": [self.spent_tokens, self.tokens],
+            "hard_tokens": self.hard_tokens,
             "seconds": [round(self.spent_seconds, 3), self.wall_seconds],
             "cost_usd": [
                 round(self.spent_cost_usd, 4),
