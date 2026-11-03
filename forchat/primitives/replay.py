@@ -12,7 +12,7 @@ from .store import EventLog
 _INTERESTING = {
     "worker_created", "worker_started", "assistant_message", "tool_call", "tool_result",
     "spawn_rejected", "hook_spawn", "hook_action", "report", "worker_done",
-    "budget_exhausted", "run_finished", "tool_denied",
+    "budget_exhausted", "run_finished", "tool_denied", "worker_error", "run_resumed",
 }
 
 
@@ -57,11 +57,26 @@ class Replay:
                 row["summary"] = str((event.get("report") or {}).get("summary", ""))[:70]
 
         lines = [f"{'worker':18} {'template':10} {'status':6} {'tokens':>7} {'sec':>7}  summary"]
+        total_tokens = 0
+        total_seconds = 0.0
+        statuses: dict[str, int] = {}
         for wid, row in workers.items():
             lines.append(
                 f"{wid:18} {row['template']:10} {row['status']:6} {row['tokens']!s:>7} "
                 f"{row['seconds']!s:>7}  {row['summary']}"
             )
+            if isinstance(row["tokens"], int):
+                total_tokens += row["tokens"]
+            if isinstance(row["seconds"], (int, float)):
+                total_seconds += float(row["seconds"])
+            if row["status"] != "-":
+                statuses[row["status"]] = statuses.get(row["status"], 0) + 1
+
+        detail = " ".join(f"{k}={v}" for k, v in sorted(statuses.items()))
+        lines.append(
+            f"合计: workers={len(workers)} tokens={total_tokens} "
+            f"seconds={total_seconds:.1f} {detail}".rstrip()
+        )
         return "\n".join(lines)
 
     def tree(self) -> str:
@@ -103,6 +118,10 @@ class Replay:
             return f"[{wid}] hook {event.get('hook')} 派生 {event.get('child')}"
         if kind == "worker_done":
             return f"[{wid}] 结束 status={event.get('status')} reason={event.get('reason')}"
+        if kind == "worker_error":
+            return f"[{wid}] 异常：{event.get('error')}"
+        if kind == "run_resumed":
+            return f"续跑：历史 workers={event.get('workers')} 下一个序号={event.get('next_seq')}"
         if kind == "run_finished":
             return f"运行结束：workers={event.get('workers')} 用时={event.get('elapsed')}s"
         return f"[{wid}] {kind}"

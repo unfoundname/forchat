@@ -605,6 +605,63 @@ def test_artifact_indexed_into_report() -> None:
     assert artifact.read_text(encoding="utf-8") == "hello"
 
 
+def test_provider_error_fails_only_worker() -> None:
+    """模型/网络层抛异常：worker 标记 failed，整次运行不崩。"""
+    workflow = WorkflowDef.load(MINIMAL)
+
+    class Boom:
+        name = "boom"
+
+        def stream(self, *args, **kwargs):
+            raise RuntimeError("网络炸了")
+            yield  # pragma: no cover
+
+    runtime = Runtime(workflow, Boom(), tmpdir())
+    root = runtime.start("任务")
+
+    assert root.status == "failed"
+    errors = runtime.log.query(type="worker_error")
+    assert errors and "网络炸了" in errors[0]["error"]
+
+
+def test_summary_has_totals() -> None:
+    workflow = WorkflowDef.load(MINIMAL)
+    responder = TemplateResponder(
+        {
+            "root": [tool_chunks([("report", {"summary": "完成"})])],
+            "coder": [tool_chunks([("report", {"summary": "子完成"})])],
+            "reviewer": [tool_chunks([("report", {"summary": "审查通过"})])],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+    summary = Replay(runtime.log).summary()
+    assert "合计:" in summary
+    assert "workers=1" in summary
+
+
+def test_workflow_rejects_unknown_top_key() -> None:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["unknown_section"] = {}
+    try:
+        WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+    except WorkflowError as exc:
+        assert "unknown_section" in str(exc)
+        return
+    raise AssertionError("未知顶层字段应当报错")
+
+
+def test_workflow_rejects_bad_max_rounds() -> None:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["max_rounds"] = 0
+    try:
+        WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+    except WorkflowError as exc:
+        assert "max_rounds" in str(exc)
+        return
+    raise AssertionError("max_rounds=0 应当报错")
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -635,6 +692,10 @@ def main() -> int:
         ("deepseek provider 映射", test_deepseek_provider_maps_chunks),
         ("续跑恢复历史 worker", test_resume_restores_workers_and_seq),
         ("附件自动进报告", test_artifact_indexed_into_report),
+        ("provider 异常只失败单个 worker", test_provider_error_fails_only_worker),
+        ("summary 合计行", test_summary_has_totals),
+        ("workflow 拒绝未知顶层字段", test_workflow_rejects_unknown_top_key),
+        ("workflow 拒绝 max_rounds=0", test_workflow_rejects_bad_max_rounds),
     ]
     failed = 0
     for name, fn in checks:

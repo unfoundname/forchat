@@ -142,6 +142,14 @@ def upper(text: str) -> str:
 它**不是沙箱**：不防任意代码执行，真正的隔离（容器、cgroup、只读挂载）属于部署层。
 被拒时返回错误回执给模型，不中断整个运行。
 
+## 失败隔离
+
+- 模型/网络异常只让当前 worker 失败（事件 `worker_error`），整次运行继续；
+- 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
+- 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完。
+
+`--inspect` 的摘要带一行合计（总 token、总耗时、各状态计数）。
+
 ## 续跑
 
 `python -m forchat` 会把整个 workflow 包快照进运行目录（`workflow.json` + `prompts/`），

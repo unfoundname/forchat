@@ -319,7 +319,15 @@ class Runtime:
                 self.log.append("budget_exhausted", worker_id=worker.id, budget=worker.budget.snapshot())
                 break
 
-            text, calls, usage = self._stream_round(worker, tpl, messages, rnd)
+            try:
+                text, calls, usage = self._stream_round(worker, tpl, messages, rnd)
+            except Exception as exc:                     # noqa: BLE001
+                # 模型/网络层炸了：只让这一个 worker 失败，不掀翻整次运行
+                reason = "error"
+                self.log.append("worker_error", worker_id=worker.id,
+                                error=f"{type(exc).__name__}: {exc}")
+                last_text = last_text or f"（异常：{type(exc).__name__}: {exc}）"
+                break
             worker.budget.charge(tokens=usage)
             last_text = text
 
@@ -339,7 +347,12 @@ class Runtime:
                 }
             )
             for call in calls:
-                result = self._execute_tool(worker, tpl, call, messages)
+                try:
+                    result = self._execute_tool(worker, tpl, call, messages)
+                except Exception as exc:                 # noqa: BLE001
+                    self.log.append("tool_error", worker_id=worker.id, tool=call["name"],
+                                    error=f"{type(exc).__name__}: {exc}")
+                    result = f"错误：{type(exc).__name__}: {exc}"
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
 
             if worker.report is not None:
