@@ -20,11 +20,13 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 | 面 | 内容 |
 |---|---|
 | 执行 | `spawn`（含 `paths` 授权）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号 |
-| 预算 | 单 worker tokens/墙钟、整轮 `max_total_tokens/max_total_seconds`、深度/worker 数/并发上限 |
+| 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限 |
 | 能力工具 | `read` `list_dir` `run_python(cwd)` `write_file`（覆盖前备份）`git`（子命令白名单）+ MCP 工具 |
 | 记录 | append-only 事件流、`Replay.review/tree/summary`、`--runs` / `--inspect` / `--resume` |
-| 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程环境擦除密钥、`.forchat-backups/` |
-| 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、截断检测、预算熔断、续跑 |
+| 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
+| 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、截断检测、预算熔断、续跑、中断 worker 可见 |
+| 服务 | HTTP/SSE（`--serve`，stdlib，仅本机）：启动运行、查状态、订阅事件流 |
+| 计费 | `pricing.json` 价目表 → `report.cost_usd` / `--inspect` 成本行；缺价目显示未知 |
 
 ## 3. 真跑证据（可在 `.runs/` 复查）
 
@@ -46,23 +48,27 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-python tests/run_all.py     # 58 条用例 + 分层校验 + demo + MCP 自检
+python tests/run_all.py     # 68 条用例 + 分层校验 + demo + MCP 自检
 ```
 
-- `tests/test_primitives.py`：37 条（预算/围栏/事件流/续跑/并发/报告/停止）
-- `tests/test_tools.py`：16 条（policy/scope/环境擦除/备份/provider/重试/工具）
+- `tests/test_primitives.py`：38 条（预算/围栏/事件流/续跑/中断/并发/报告/停止/成本）
+- `tests/test_tools.py`：20 条（policy/scope/环境擦除/备份/provider/重试/工具/成本/超时）
 - `tests/test_cli.py`：5 条（--check / --inspect / --runs）
+- `tests/test_server.py`：2 条（HTTP 端点 + SSE）
+- `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环
 
 ## 5. 已知边界（不是缺陷，是范围）
 
 | 边界 | 说明 |
 |---|---|
-| 无沙箱 | `run_python` 是任意代码；隔离在部署层，见 `docs/sandbox.md` |
+| 无沙箱 | `run_python` 是任意代码；资源限制（超时/内存）不是文件系统隔离，见 `docs/sandbox.md` |
 | 叫停是协作式 | 在途网络请求不会立刻断 |
 | 读不受 scope 限制 | 只受项目根约束（读无副作用） |
-| 没有成本核算 | provider 不返回金额；只有 token/时间预算 |
-| 没有 UI/多租户 | 命令行 + 事件流；接入 HTTP/UI 是产品化工作 |
+| 崩溃恢复是"暴露"不是"复活" | 中断 worker 标 `interrupted` 并把任务交给新根，不自动重放在途执行 |
+| 成本需要自己配价目表 | 没有 `pricing.json` 时明确显示"未知"，不记 0 |
+| HTTP 服务无鉴权 | 默认只绑 `127.0.0.1`；鉴权/多租户属部署层 |
+| 没有 UI | 命令行 + 事件流 + HTTP/SSE |
 
 ## 6. 仓库状态
 
