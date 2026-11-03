@@ -215,12 +215,66 @@ def test_ssrf_redirect_blocked() -> None:
             raise AssertionError(f"重定向到 {target} 应当被拒绝")
 
 
+def test_fetch_deepseek_backend() -> None:
+    """FORCHAT_FETCH_BACKEND=deepseek：走服务端 Fetch API，解析 title/content。"""
+    seen: dict = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            seen.update(json.loads(self.rfile.read(length) or b"{}"))
+            payload = json.dumps(
+                {"title": "示例页面", "content": "# 正文\n\n这是抓取到的内容。"},
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    saved = _without_keys("FORCHAT_FETCH_BACKEND", "FORCHAT_FETCH_URL",
+                          "FORCHAT_FETCH_KEY", "DEEPSEEK_API_KEY")
+    os.environ["FORCHAT_FETCH_BACKEND"] = "deepseek"
+    os.environ["FORCHAT_FETCH_URL"] = f"http://127.0.0.1:{server.server_address[1]}/fetch"
+    os.environ["FORCHAT_FETCH_KEY"] = "test-key"
+    try:
+        out = registry.execute(
+            "web_fetch", json.dumps({"url": "http://93.184.216.34/page"})
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        _restore_keys(saved)
+
+    assert seen["url"] == "http://93.184.216.34/page", seen
+    assert "示例页面" in out and "抓取到的内容" in out, out
+
+
+def test_fetch_deepseek_requires_key() -> None:
+    saved = _without_keys("FORCHAT_FETCH_BACKEND", "FORCHAT_FETCH_URL",
+                          "FORCHAT_FETCH_KEY", "DEEPSEEK_API_KEY")
+    os.environ["FORCHAT_FETCH_BACKEND"] = "deepseek"
+    try:
+        out = registry.execute("web_fetch", json.dumps({"url": "http://93.184.216.34/page"}))
+    finally:
+        _restore_keys(saved)
+    assert "需要 key" in out, out
+
+
 def main() -> int:
     checks = [
         ("未配置时报错", test_search_requires_config),
         ("搜索后端返回结果", test_search_backend_returns_results),
         ("DeepSeek 搜索 schema", test_search_deepseek_schema),
         ("截图标记转多模态消息", test_screenshot_marker_to_image_message),
+        ("Fetch-DeepSeek 后端", test_fetch_deepseek_backend),
+        ("Fetch 缺 key 报错", test_fetch_deepseek_requires_key),
         ("SSRF-数字写法", test_ssrf_numeric_encodings),
         ("SSRF-IPv6", test_ssrf_ipv6_forms),
         ("SSRF-localhost", test_ssrf_localhost_variants),

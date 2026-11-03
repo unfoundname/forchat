@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -93,6 +94,43 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+DEFAULT_FETCH_URL = "https://api.deepseek.com/v1/tools/fetch"
+
+
+def _deepseek_fetch(url: str, max_chars: int) -> str:
+    """走 DeepSeek Fetch API（服务端抓取，返回 Markdown）。"""
+    key = (os.environ.get("FORCHAT_FETCH_KEY", "").strip()
+           or os.environ.get("DEEPSEEK_API_KEY", "").strip())
+    if not key:
+        return "错误：DeepSeek Fetch 需要 key（DEEPSEEK_API_KEY 或 FORCHAT_FETCH_KEY）"
+    endpoint = os.environ.get("FORCHAT_FETCH_URL", "").strip() or DEFAULT_FETCH_URL
+    payload = json.dumps({"url": url}).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            data = json.loads(response.read(MAX_BYTES).decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        hint = {403: "被安全策略拒绝", 404: "取不到可用页面内容"}.get(exc.code, "")
+        return f"错误：Fetch HTTP {exc.code}{('（' + hint + '）') if hint else ''}"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return f"错误：Fetch 失败 {url}: {exc}"
+    except json.JSONDecodeError:
+        return "错误：Fetch 返回的不是 JSON"
+
+    title = str(data.get("title") or "").strip()
+    content = str(data.get("content") or "").strip()
+    text = f"# {title}\n\n{content}" if title else content
+    limit = max(200, int(max_chars))
+    if len(text) > limit:
+        text = text[:limit] + f"\n...（已截断，共 {len(text)} 字符）"
+    return text or "（空内容）"
+
+
 def _html_to_text(html: str) -> str:
     text = re.sub(r"<script.*?</script>", " ", html, flags=re.S | re.I)
     text = re.sub(r"<style.*?</style>", " ", text, flags=re.S | re.I)
@@ -103,8 +141,8 @@ def _html_to_text(html: str) -> str:
 
 
 @tool(
-    description="抓取一个 URL 的文本内容（只读）。用于查新 API 文档、看线上报错、读别人的仓库页面。"
-                "默认拒绝内网地址（重定向逐跳校验）；返回内容会截断。",
+    description="抓取一个 URL 的文本内容（只读）。默认本地抓取并拒绝内网地址（重定向逐跳校验）；"
+                "设 FORCHAT_FETCH_BACKEND=deepseek 可改用 DeepSeek Fetch API（服务端抓取，返回 Markdown）。",
     params={
         "url": "http(s) URL",
         "max_chars": "最多返回多少字符，默认 12000",
@@ -119,6 +157,8 @@ def web_fetch(url: str, max_chars: int = 12000) -> str:
         return "错误：URL 缺少主机名"
     if blocked_host(host):
         return f"错误：拒绝访问内网/本机地址 {host}（如确需访问，设 FORCHAT_WEB_ALLOW_PRIVATE=1）"
+    if os.environ.get("FORCHAT_FETCH_BACKEND", "local").strip().lower() == "deepseek":
+        return _deepseek_fetch(url, max_chars)
 
     request = urllib.request.Request(url, headers={"User-Agent": "forchat/0.1"})
     opener = urllib.request.build_opener(SafeRedirectHandler())

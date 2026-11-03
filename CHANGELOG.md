@@ -21,6 +21,7 @@
 
 ### 模型能力
 - `web_search` 默认接入 DeepSeek Search API（`/v1/tools/search`，`DEEPSEEK_API_KEY`）。
+- `web_fetch` 可选 DeepSeek Fetch API 后端（`FORCHAT_FETCH_BACKEND=deepseek`，`/v1/tools/fetch`）。
 - `deepseek-flash` 视觉链路真模型验证：`image_url` data URL → 读图正确（生成 "42" 的 PNG）。
 
 ### 安全
