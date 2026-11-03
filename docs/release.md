@@ -54,7 +54,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q --cov=forchat --cov-fail-under=65   # 151 条用例 + 覆盖率门槛（CI 用这个）
+pytest -q --cov=forchat --cov-fail-under=65   # 154 条用例 + 覆盖率门槛（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -77,6 +77,7 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_exec.py`：2 条（环境脱敏 / 按 worker kill）
 - `tests/test_remote.py`：3 条（共享目录队列 / 远程叶子 worker / 远程取消）
 - `tests/test_contracts.py`：3 条（hash+checks / checks 失败拒绝 report / 篡改检测）
+- `tests/test_capture.py`：3 条（窗口截图无浏览器 / 无头网页截图 / 内网拒绝；非 Windows 跳过）
 - `tests/test_subproc.py`：5 条（超时 / 脱敏环境 / 内存上限 / 取消 kill 工具子进程 / force_stop 联动）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

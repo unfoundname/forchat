@@ -277,6 +277,10 @@ agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许�
   也可用 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY` 指向别的兼容后端；
 - `screenshot`：抓屏存 PNG；`FORCHAT_VISION=1` 时运行时把它转成 `image_url` 多模态消息
   （`deepseek-flash` 原生支持 OpenAI 兼容的 image_url，已用真模型验证）；
+- `window_screenshot`：**无浏览器**截任意应用窗口（Win32 `PrintWindow`，后台窗口也可），
+  例如截我们自己的 DSH 窗口；比整屏截图更干净；
+- `page_screenshot`：**无可见浏览器**截网页（调用本机 Edge/Chrome 的 `--headless=new --screenshot`），
+  支持宽高；默认拒绝内网地址；返回同样的图像标记；
 - `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述；
   workflow 模板写 `"require_checks": true` 后，没跑检查/检查失败时 `report` 会被直接拒绝。
 

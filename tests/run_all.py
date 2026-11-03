@@ -33,6 +33,7 @@ STEPS = [
     ("进程出口自检", [sys.executable, "tests/test_exec.py"]),
     ("分布式调度自检", [sys.executable, "tests/test_remote.py"]),
     ("契约机器校验", [sys.executable, "tests/test_contracts.py"]),
+    ("截图能力自检", [sys.executable, "tests/test_capture.py"]),
     ("分层校验", [sys.executable, "tests/test_layering.py"]),
     ("端到端 demo", [sys.executable, "examples/run_demo.py"]),
     ("MCP 自检", [sys.executable, "examples/smoke_mcp.py"]),
