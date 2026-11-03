@@ -42,6 +42,8 @@ def run_python(script: str, args: str = "", cwd: str = "") -> str:
         proc = subproc.run(cmd, cwd=work_dir, timeout=timeout)
     except subprocess.TimeoutExpired:
         return f"错误：执行超时（>{timeout:g}s），可能是脚本在等输入或死循环"
+    except subproc.Cancelled:
+        return "错误：已取消（worker 被停止）"
     except OSError as exc:
         return f"错误：无法执行 {resolved}: {exc}"
 

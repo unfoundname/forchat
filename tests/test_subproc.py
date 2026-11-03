@@ -61,11 +61,61 @@ def test_memory_limit_best_effort() -> None:
     )
 
 
+def test_cancel_kills_running_tool_process() -> None:
+    """worker 被 stop 时，正在跑的工具子进程被直接 kill。"""
+    import threading
+
+    work = tmpdir()
+    script = work / "sleep.py"
+    script.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
+
+    outcome: dict = {}
+
+    def runner() -> None:
+        from forchat import subproc as sub
+
+        with sub.worker_context("w1"):
+            try:
+                sub.run([sys.executable, str(script)], cwd=work, timeout=30)
+            except sub.Cancelled:
+                outcome["cancelled"] = True
+
+    thread = threading.Thread(target=runner)
+    thread.start()
+    time.sleep(0.4)
+    killed = subproc.cancel_worker("w1")
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert outcome.get("cancelled") is True
+    assert killed >= 1
+
+
+def test_force_stop_calls_process_canceller() -> None:
+    """Runtime.force_stop 要把取消传给工具子进程。"""
+    from _support import MINIMAL, tmpdir
+
+    from forchat.primitives import Runtime, WorkflowDef
+    from forchat.primitives.types import WorkerInstance
+    from forchat.providers import FakeProvider
+
+    calls: list[str] = []
+    workflow = WorkflowDef.load(MINIMAL)
+    runtime = Runtime(workflow, FakeProvider([]), tmpdir(), cancel_processes=calls.append)
+    worker = WorkerInstance(id="n001-root", template="root", task="t", status="running")
+    runtime.workers[worker.id] = worker
+
+    runtime.force_stop(worker.id)
+    assert calls == [worker.id]
+
+
 def main() -> int:
     checks = [
         ("超时", test_timeout_raises),
         ("环境脱敏", test_env_is_scrubbed),
         ("内存上限（best-effort）", test_memory_limit_best_effort),
+        ("取消 kill 工具子进程", test_cancel_kills_running_tool_process),
+        ("force_stop 联动取消", test_force_stop_calls_process_canceller),
     ]
     return run("受限子进程自检", checks)
 

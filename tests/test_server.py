@@ -314,6 +314,24 @@ def test_worker_force_stop_and_replace() -> None:
     manager.stop(started["id"])
 
 
+def test_summary_cached_by_signature() -> None:
+    """状态摘要按事件文件签名缓存：文件没变就复用，变了才重读。"""
+    base = tmpdir()
+    manager = _manager(base)
+    started = manager.start("minimal", "缓存自检")
+    _wait_done(manager, started["id"])
+
+    first = manager.status(started["id"])
+    second = manager.status(started["id"])
+    assert first is second, "同一签名应当命中缓存"
+
+    events = Path(started["run_dir"]) / "events.jsonl"
+    with events.open("a", encoding="utf-8") as handle:
+        handle.write("\n")
+    third = manager.status(started["id"])
+    assert third is not first, "事件文件变化后应当重读"
+
+
 def main() -> int:
     checks = [
         ("manager 启停与状态", test_manager_start_and_status),
@@ -324,6 +342,7 @@ def main() -> int:
         ("运行结束释放内存", test_runtimes_are_released_after_run),
         ("服务端加载价目表", test_local_pricing_applied),
         ("metrics 有缓存", test_metrics_cached),
+        ("状态摘要签名缓存", test_summary_cached_by_signature),
         ("worker 强停与替换", test_worker_force_stop_and_replace),
         ("SSE 读取滚动分段", test_sse_reads_rotated_segments),
     ]

@@ -1,6 +1,7 @@
 """ToolsMixin：工具分发与运行时工具实现（spawn/report/wait/stop/state/artifact）。"""
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -60,12 +61,18 @@ class ToolsMixin:
             "write_contract": self._tool_write_contract,
             "read_contracts": self._tool_read_contracts,
         }.get(name)
-        if handler is None:
-            if name not in self.external:
-                return f"错误：工具 {name} 没有实现"
-            result = self.external[name][1](call["arguments"] or "{}")
-        else:
-            result = handler(worker, tpl, args)
+        context = (
+            self.worker_context(worker.id)
+            if self.worker_context is not None
+            else contextlib.nullcontext()
+        )
+        with context:
+            if handler is None:
+                if name not in self.external:
+                    return f"错误：工具 {name} 没有实现"
+                result = self.external[name][1](call["arguments"] or "{}")
+            else:
+                result = handler(worker, tpl, args)
         result = self._normalize_image_result(result)
         if name == "run_checks":
             worker.checks_passed = result.startswith("验收总结果：PASS")

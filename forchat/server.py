@@ -52,6 +52,7 @@ class RunManager:
         self.keep_runtimes = max(1, keep_runtimes)
         self.metrics_ttl = max(0.0, float(metrics_ttl))
         self._metrics_cache: tuple[float, str] | None = None
+        self._summary_cache: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
         self._threads: dict[str, threading.Thread] = {}
         self._runtimes: dict[str, Runtime] = {}
         self._rate: dict[str, tuple[float, int]] = {}
@@ -136,7 +137,7 @@ class RunManager:
 
     def status(self, run_id: str) -> dict[str, Any] | None:
         run_dir = self.runs_root / run_id
-        if not (run_dir / "events.jsonl").is_file():
+        if not (run_dir / "events.jsonl").is_file() and not list(run_dir.glob("events.*.jsonl")):
             return None
         return self._summary(run_dir)
 
@@ -189,7 +190,24 @@ class RunManager:
         runs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         return runs[:limit]
 
+    def _signature(self, run_dir: Path) -> tuple[int, int]:
+        total = 0
+        latest = 0
+        for path in list(run_dir.glob("events*.jsonl")) + [run_dir / "tools.jsonl"]:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            total += stat.st_size
+            latest = max(latest, stat.st_mtime_ns)
+        return latest, total
+
     def _summary(self, run_dir: Path) -> dict[str, Any]:
+        signature = self._signature(run_dir)
+        cached = self._summary_cache.get(run_dir.name)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+
         log = EventLog(run_dir)
         finished = log.query(type="run_finished")
         last = finished[-1] if finished else None
@@ -198,7 +216,7 @@ class RunManager:
         thread = self._threads.get(run_dir.name)
         runtime = self._runtimes.get(run_dir.name)
         stuck = runtime.stuck_workers() if runtime is not None else []
-        return {
+        summary = {
             "id": run_dir.name,
             "status": (last or {}).get("status", "running"),
             "workers": (last or {}).get("workers"),
@@ -209,6 +227,8 @@ class RunManager:
             "stuck": stuck,
             "last_report": latest,
         }
+        self._summary_cache[run_dir.name] = (signature, summary)
+        return summary
 
 
 def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:

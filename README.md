@@ -363,9 +363,10 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
 - **只有墙钟到期才中断 worker**（`run_expired`）；token/成本超预算只记账，兄弟分支照常跑完；
 - **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`；
-- **硬中断（可选）**：`FORCHAT_HARD_KILL=1` 把模型流式请求放进子进程；stop / 取消 / 分片超时
-  （`FORCHAT_CHUNK_TIMEOUT`，默认 300s）时直接 `kill` 子进程——挂死的网络请求不会再拖住线程。
-  工具本身有超时；真正无法硬杀的是同进程里的纯 Python 死循环（那种用墙钟兜底）。
+- **硬中断（两层）**：
+  - 模型请求：`FORCHAT_HARD_KILL=1` 放进子进程，stop/超时（`FORCHAT_CHUNK_TIMEOUT`）直接 kill；
+  - 工具子进程：`force_stop` / `stop_worker` 会同时 kill 该 worker 正在跑的 `run_python`/`git` 子进程；
+  - 仍杀不掉的是同进程里的纯 Python 死循环（用墙钟兜底）。
 - 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。
 
 provider 的两个硬参数（真模型）：

@@ -129,6 +129,7 @@ def _list_skills() -> None:
 
 
 def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
+    from . import subproc
     from .policy import Policy
     from .pricing import Pricing
     from .providers.deepseek import DeepSeekProvider
@@ -156,6 +157,8 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         pricing=pricing if pricing.known() else None,
         facts_dir=os.environ.get("FORCHAT_FACTS_DIR") or None,
         stream_factory=_stream_factory(),
+        worker_context=subproc.worker_context,
+        cancel_processes=subproc.cancel_worker,
     )
 
 

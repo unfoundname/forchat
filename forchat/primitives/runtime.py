@@ -41,12 +41,17 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         facts_dir: Path | str | None = None,
         compact_summarizer: Callable[[list[dict]], str] | None = None,
         stream_factory: Callable[..., Any] | None = None,
+        worker_context: Callable[[str], Any] | None = None,
+        cancel_processes: Callable[[str], Any] | None = None,
     ) -> None:
         self.wf = workflow
         self.provider = provider
         self.model = model
         # 可选的请求执行器：把模型调用放进子进程（真正可 kill）；None = 进程内
         self.stream_factory = stream_factory
+        # 由装配层注入：标记"当前 worker"以便取消时 kill 它的子进程
+        self.worker_context = worker_context
+        self.cancel_processes = cancel_processes
         # compact 摘要器：默认用 provider 自己调一次模型；测试/宿主可注入替换
         self.compact_summarizer = compact_summarizer
         # 每个 worker 一份事实文件；默认落在 run 目录，可用 FORCHAT_FACTS_DIR 指到长期存储
@@ -124,6 +129,8 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
             return False
         event = self._stop_events.setdefault(worker_id, threading.Event())
         event.set()
+        if self.cancel_processes is not None:
+            self.cancel_processes(worker_id)
         future = self._futures.get(worker_id)
         if future is not None:
             future.cancel()
