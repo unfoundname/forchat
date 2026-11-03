@@ -107,9 +107,6 @@ class MCPClient:
                 pass
 
     # ------------------------------------------------------------------ 协议
-    def is_alive(self) -> bool:
-        return self.proc is not None and self.proc.poll() is None
-
     def restart(self) -> "MCPClient":
         """服务端崩了/超时之后重建子进程与握手。工具列表由调用方决定是否重新拉取。"""
         self.close()

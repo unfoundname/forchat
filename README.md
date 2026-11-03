@@ -37,7 +37,8 @@ ForChat/
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
 ├── tests/
-│   ├── test_primitives.py      原语自检（9 条）
+│   ├── run_all.py              一条命令跑全部本地检查（原语 + 分层 + demo + MCP）
+│   ├── test_primitives.py      原语自检（45 条：预算/围栏/事件流/续跑/工具/CLI）
 │   └── test_layering.py        依赖方向 / 领域词 / 唯一执行循环
 ├── skills/                     技能目录（数据）
 └── mcp_servers.json            MCP 服务端配置
@@ -46,6 +47,7 @@ ForChat/
 ## 跑起来（不需要 key）
 
 ```powershell
+python tests/run_all.py            # 全部本地检查：原语 + 分层 + demo + MCP（推荐）
 python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
 python tests/test_primitives.py    # 原语自检
 python tests/test_layering.py      # 架构约束

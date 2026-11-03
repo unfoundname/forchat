@@ -24,8 +24,9 @@ forchat/__main__.py   只做装配与展示，不含执行逻辑（执行只在 
 ## 测试（不需要网络/API key）
 
 ```powershell
-python tests/test_primitives.py     # 原语：预算、事件流、配置校验、围栏、replay
-python tests/test_layering.py       # 依赖方向
+python tests/run_all.py             # 一条命令：原语 + 分层 + demo + MCP（提交前跑这个）
+python tests/test_primitives.py     # 原语：预算、事件流、配置校验、围栏、续跑、工具
+python tests/test_layering.py       # 依赖方向 / 领域词 / 唯一执行循环
 python examples/run_demo.py         # 端到端：假 provider 跑一次完整运行
 ```
 
