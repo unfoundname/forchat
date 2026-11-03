@@ -38,7 +38,7 @@ class Policy:
         if not isinstance(args, dict):
             return "参数必须是 JSON 对象"
 
-        mutable_tools = {"write_file", "run_python", "git"}
+        mutable_tools = {"write_file", "edit_file", "run_python", "git"}
         scope_roots = [(self.root / str(s)).resolve() for s in scope]
         if tool in mutable_tools and scope_roots:
             allowed_roots = scope_roots

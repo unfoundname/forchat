@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 
@@ -12,6 +13,40 @@ from .workflow import WorkerTemplate
 
 
 class WorkerMixin:
+
+    def _trim_context(self, worker: WorkerInstance, messages: list[dict]) -> None:
+        """上下文管理：超长时保留 system + 任务 + 最近轮次，砍掉中间历史。
+
+        默认 ""不限轮数"" 只在有裁剪时成立：否则几十轮后 messages 必然撑爆上下文。
+        """
+        limit_messages = int(os.environ.get("FORCHAT_CONTEXT_MESSAGES", "80"))
+        limit_chars = int(os.environ.get("FORCHAT_CONTEXT_CHARS", "160000"))
+        chars = sum(len(str(item.get("content") or "")) for item in messages)
+        if len(messages) <= limit_messages and chars <= limit_chars:
+            return
+
+        head = messages[:2]
+        tail = messages[2:]
+        keep = max(4, limit_messages - 3)   # 2 条头部 + 1 条裁剪说明 + 最近 keep 条
+        selected = tail[-keep:]
+        while selected and selected[0].get("role") == "tool":
+            selected = selected[1:]
+        dropped = len(tail) - len(selected)
+        if dropped <= 0:
+            return
+
+        note = {
+            "role": "user",
+            "content": f"（较早的 {dropped} 条消息已裁剪，只保留最近轮次；需要细节请重新 read/grep。）",
+        }
+        messages[:] = head + [note] + selected
+        self.log.append(
+            "context_trimmed",
+            worker_id=worker.id,
+            dropped=dropped,
+            kept=len(messages),
+            chars=sum(len(str(item.get("content") or "")) for item in messages),
+        )
 
     def _run_worker(self, worker: WorkerInstance, resume: dict | None = None) -> None:
         tpl = self.wf.workers[worker.template]
@@ -66,6 +101,7 @@ class WorkerMixin:
                                 total_tokens=self.total_tokens, limit=self.max_total_tokens)
                 break
 
+            self._trim_context(worker, messages)
             try:
                 text, calls, usage = self._stream_round(worker, tpl, messages, rnd)
             except Exception as exc:                     # noqa: BLE001

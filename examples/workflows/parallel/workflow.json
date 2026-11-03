@@ -21,7 +21,10 @@
         "read",
         "run_python",
         "read_worker_report",
-        "read_state"
+        "read_state",
+        "edit_file",
+        "grep",
+        "glob"
       ],
       "budget": {
         "tokens": 30000,
@@ -36,7 +39,10 @@
         "read",
         "run_python",
         "report",
-        "read_state"
+        "read_state",
+        "edit_file",
+        "grep",
+        "glob"
       ],
       "budget": {
         "tokens": 30000,

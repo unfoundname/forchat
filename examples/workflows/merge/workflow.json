@@ -12,8 +12,20 @@
     "root": {
       "role_file": "prompts/root.md",
       "can_spawn": [],
-      "tools": ["git", "read_state", "write_note", "report", "read"],
-      "budget": {"tokens": 20000, "wall_seconds": 400}
+      "tools": [
+        "git",
+        "read_state",
+        "write_note",
+        "report",
+        "read",
+        "edit_file",
+        "grep",
+        "glob"
+      ],
+      "budget": {
+        "tokens": 20000,
+        "wall_seconds": 400
+      }
     }
   }
 }

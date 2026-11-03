@@ -11,26 +11,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..registry import tool
-
-BACKUP_DIR = ".forchat-backups"
-
-
-def _backup_existing(target: Path, root: Path) -> str | None:
-    if not target.is_file():
-        return None
-    try:
-        rel = target.resolve().relative_to(root)
-    except ValueError:
-        rel = Path(target.name)
-    backup = root / BACKUP_DIR / rel
-    backup.parent.mkdir(parents=True, exist_ok=True)
-    backup.write_text(target.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
-    return str(backup.relative_to(root))
+from ._files import write_text
 
 
 @tool(
     description="写入文本文件（覆盖或新建）。相对路径按当前工作目录解析；"
-                "需要新建目录时会自动创建；覆盖已有文件前会自动备份到 .forchat-backups/。",
+                "需要新建目录时会自动创建；覆盖已有文件前会自动备份到 .forchat-backups/。"
+                "小改动请优先用 edit_file，不要整文件重写。",
     params={
         "path": "目标文件路径，例如 src/app.py 或 notes/plan.md",
         "content": "完整文件内容（会整体覆盖，不是追加）",
@@ -38,16 +25,11 @@ def _backup_existing(target: Path, root: Path) -> str | None:
 )
 def write_file(path: str, content: str) -> str:
     target = Path(path)
-    root = Path.cwd().resolve()
-    note = ""
     try:
-        backup = _backup_existing(target, root)
-        if backup:
-            note = f"（旧内容已备份到 {backup}）"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        backup = write_text(target, content)
     except IsADirectoryError:
         return f"错误：{path} 是目录"
     except OSError as exc:
         return f"错误：写入失败 {path}: {exc}"
+    note = f"（旧内容已备份到 {backup}）" if backup else ""
     return f"已写入 {path}（{len(content)} 字符）{note}"

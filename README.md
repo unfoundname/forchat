@@ -29,7 +29,7 @@ ForChat/
 │   │   ├── runtime_specs.py    运行时工具 schema
 │   │   └── replay.py           review（人读）/ tree / tool_calls
 │   ├── providers/              base(Protocol) · fake(离线) · retry(瞬时重试) · deepseek(唯一用 SDK)
-│   ├── tools/                  能力工具：read / list_dir / run_python / write_file / git
+│   ├── tools/                  能力工具：read / grep / glob / edit_file / run_python / write_file / git
 │   ├── skills/                 技能加载（SKILL.md）
 │   ├── mcp.py                  MCP 客户端（stdio + JSON-RPC）
 │   └── mcp_bridge.py           MCP 工具 → 工具注册表
@@ -180,11 +180,13 @@ examples/workflows/minimal/
 **轮数默认不限**：协调型 worker 跑几十上百轮是正常的，真正的闸是预算（tokens / wall_seconds）
 和整轮墙钟。需要给单个模板设上限时，在 `workflow.json` 里写 `max_rounds`。
 
-## 能力工具（read / list_dir / run_python / write_file / git）
+## 能力工具（read / grep / glob / edit_file / run_python / write_file / git）
 
-- `read` / `list_dir`：读文件与目录；
+- `read` / `list_dir`：读文件与目录；`read` 支持 `offset` / `limit`，大文件可分段读；
+- `grep` / `glob`：按正则搜内容、按模式找文件（找符号/调用点不用逐层猜路径）；
+- `edit_file`：精确替换（`old_string` 默认必须唯一），改一两行不必整文件重写；
 - `run_python`：执行脚本，支持 `cwd`（worktree 里跑测试就靠它）；
-- `write_file`：把内容真正落盘（路径安全由 policy 统一拦）；
+- `write_file`：把内容真正落盘（路径安全由 policy 统一拦，覆盖前自动备份）；
 - `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell。
 
 在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
@@ -199,6 +201,13 @@ def upper(text: str) -> str:
 
 > 接入方式：`forchat/tool_bridge.py` 把 registry 里的工具导出成 `{name: (spec, caller)}` 注入 `Runtime`。
 > 在 `workflow.json` 的 `tools` 里写工具名即可（校验时会拿"这台机器上当前注册了哪些工具"来比对）：
+
+## 上下文管理
+
+worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，如果超过
+`FORCHAT_CONTEXT_MESSAGES`（默认 80 条）或 `FORCHAT_CONTEXT_CHARS`（默认 160k 字符），
+就保留 `system + 原始任务 + 最近轮次`，裁掉中间历史，并记 `context_trimmed` 事件。
+"跑上百轮"的前提是这条裁剪真的在跑，否则几十轮后必然撞上下文上限。
 
 ## 技能
 

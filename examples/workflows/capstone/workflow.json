@@ -12,15 +12,46 @@
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
-      "can_spawn": ["coder"],
-      "tools": ["spawn", "wait_workers", "git", "run_python", "read", "read_state", "write_note", "read_worker_report", "report"],
-      "budget": {"tokens": 60000, "wall_seconds": 900}
+      "can_spawn": [
+        "coder"
+      ],
+      "tools": [
+        "spawn",
+        "wait_workers",
+        "git",
+        "run_python",
+        "read",
+        "read_state",
+        "write_note",
+        "read_worker_report",
+        "report",
+        "edit_file",
+        "grep",
+        "glob"
+      ],
+      "budget": {
+        "tokens": 60000,
+        "wall_seconds": 900
+      }
     },
     "coder": {
       "role_file": "prompts/coder.md",
       "can_spawn": [],
-      "tools": ["git", "write_file", "read", "run_python", "report", "read_state"],
-      "budget": {"tokens": 40000, "wall_seconds": 600}
+      "tools": [
+        "git",
+        "write_file",
+        "read",
+        "run_python",
+        "report",
+        "read_state",
+        "edit_file",
+        "grep",
+        "glob"
+      ],
+      "budget": {
+        "tokens": 40000,
+        "wall_seconds": 600
+      }
     }
   }
 }

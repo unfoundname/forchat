@@ -275,6 +275,84 @@ def test_run_python_timeout_env() -> None:
 
 
 
+def test_read_supports_offset_and_limit() -> None:
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    (work / "big.txt").write_text(
+        "\n".join(f"line {i}" for i in range(1, 501)), encoding="utf-8"
+    )
+    old = os.getcwd()
+    os.chdir(work)
+    try:
+        out = registry.execute(
+            "read", json.dumps({"path": "big.txt", "offset": 400, "limit": 5})
+        )
+    finally:
+        os.chdir(old)
+    assert " 400 | line 400" in out, out
+    assert "line 404" in out and "line 405" not in out
+    assert "共 500 行" in out
+
+
+def test_edit_file_unique_and_replace_all() -> None:
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    (work / "a.txt").write_text("alpha\nbeta\nalpha\n", encoding="utf-8")
+    old = os.getcwd()
+    os.chdir(work)
+    try:
+        ambiguous = registry.execute(
+            "edit_file", json.dumps({"path": "a.txt", "old_string": "alpha", "new_string": "x"})
+        )
+        assert "出现" in ambiguous and "replace_all" in ambiguous, ambiguous
+
+        every = registry.execute(
+            "edit_file",
+            json.dumps({"path": "a.txt", "old_string": "alpha", "new_string": "X", "replace_all": True}),
+        )
+        assert "已编辑" in every, every
+
+        single = registry.execute(
+            "edit_file",
+            json.dumps({"path": "a.txt", "old_string": "beta", "new_string": "BETA"}),
+        )
+        assert "已编辑" in single, single
+    finally:
+        os.chdir(old)
+    assert (work / "a.txt").read_text(encoding="utf-8") == "X\nBETA\nX\n"
+
+
+def test_grep_and_glob() -> None:
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    (work / "a.py").write_text("x = 1  # TODO fix\n", encoding="utf-8")
+    (work / "b.md").write_text("TODO docs\n", encoding="utf-8")
+    (work / "sub").mkdir()
+    (work / "sub" / "c.py").write_text("print('ok')\n", encoding="utf-8")
+
+    old = os.getcwd()
+    os.chdir(work)
+    try:
+        hit = registry.execute("grep", json.dumps({"pattern": "TODO", "include": "*.py"}))
+        listing = registry.execute("glob", json.dumps({"pattern": "**/*.py"}))
+    finally:
+        os.chdir(old)
+
+    assert "a.py:1" in hit, hit
+    assert "b.md" not in hit, hit
+    assert "a.py" in listing and "c.py" in listing, listing
+    assert "b.md" not in listing, listing
+
+
 def main() -> int:
     checks = [
         ("外部工具 schema 桥接", test_external_tools_bridge),
@@ -289,6 +367,9 @@ def main() -> int:
         ("运行时报告含成本", test_runtime_report_includes_cost),
         ("成本预算闸", test_budget_cost_fence),
         ("run_python 超时环境变量", test_run_python_timeout_env),
+        ("read offset/limit", test_read_supports_offset_and_limit),
+        ("edit_file 唯一/全替换", test_edit_file_unique_and_replace_all),
+        ("grep 与 glob", test_grep_and_glob),
     ]
     return run("工具自检", checks)
 

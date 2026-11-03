@@ -11,22 +11,56 @@
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
-      "can_spawn": ["coder"],
-      "tools": ["spawn", "report", "read_state", "write_note", "git", "read", "write_artifact", "read_worker_report"],
-      "budget": {"tokens": 20000, "wall_seconds": 600}
+      "can_spawn": [
+        "coder"
+      ],
+      "tools": [
+        "spawn",
+        "report",
+        "read_state",
+        "write_note",
+        "git",
+        "read",
+        "write_artifact",
+        "read_worker_report",
+        "edit_file",
+        "grep",
+        "glob"
+      ],
+      "budget": {
+        "tokens": 20000,
+        "wall_seconds": 600
+      }
     },
     "coder": {
       "role_file": "prompts/coder.md",
       "can_spawn": [],
-      "tools": ["write_file", "read", "report", "read_state"],
+      "tools": [
+        "write_file",
+        "read",
+        "report",
+        "read_state",
+        "edit_file",
+        "grep",
+        "glob"
+      ],
       "hooks": {
-        "on_done": [{"spawn": "reviewer", "task": "审查 {worker_id} 的落盘结果", "wait": true}]
+        "on_done": [
+          {
+            "spawn": "reviewer",
+            "task": "审查 {worker_id} 的落盘结果",
+            "wait": true
+          }
+        ]
       }
     },
     "reviewer": {
       "role_file": "prompts/reviewer.md",
       "can_spawn": [],
-      "tools": ["read", "report"]
+      "tools": [
+        "read",
+        "report"
+      ]
     }
   }
 }

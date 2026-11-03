@@ -29,6 +29,7 @@
   超过 `FORCHAT_EVENT_LOG_MB` 自动分段（`events.<n>.jsonl`），关键事件 fsync。
 - **重试**：provider 层只重试"首片之前"的瞬时错误；worker 层用模板 `retries` 兜基础设施抖动，业务失败不重试。
 - **快照（snapshot）**：每轮把 worker 的 `messages`/轮次写到 `workers/<id>.json`；`--resume-worker` 用它从断点继续（同一 run 目录、事件追加）。
+- **上下文裁剪**：每轮请求前超限就保留 system+任务+最近轮次、裁掉中间历史，记 `context_trimmed` 事件。
 - **保留策略**：`--prune` 按"最近 N 次 / 最老 N 天"清理 `.runs/`，默认 dry-run。
 - **状态**：`pending / running / done / failed / killed / interrupted`。
 - **Replay**：只读重建一次运行——`review()` 流水账、`tree()` 派生树、`summary()` 每个 worker 的消耗与摘要。

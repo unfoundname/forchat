@@ -324,6 +324,36 @@ def test_parallel_spawn_and_log_integrity() -> None:
 
 
 
+def test_context_trimmed_for_long_sessions() -> None:
+    """长会话必须裁剪上下文：保留 system+任务+最近轮次，并留事件。"""
+    import os
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    turns = [tool_chunks([("read_state", {})]) for _ in range(20)]
+    turns.append(tool_chunks([("report", {"summary": "裁剪后完成"})]))
+    provider = FakeProvider(TemplateResponder({"root": turns}))
+
+    old = os.environ.get("FORCHAT_CONTEXT_MESSAGES")
+    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "10"
+    try:
+        runtime = Runtime(workflow, provider, tmpdir())
+        root = runtime.start("任务")
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_CONTEXT_MESSAGES", None)
+        else:
+            os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
+
+    assert root.status == "done", root.status
+    assert runtime.log.query(type="context_trimmed")
+    assert max(len(seen) for seen in provider.seen) <= 12
+
+
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),

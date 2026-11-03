@@ -19,9 +19,9 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 
 | 面 | 内容 |
 |---|---|
-| 执行 | `spawn`（含 `paths` 授权）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号 |
+| 执行 | `spawn`（含 `paths` 授权）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
 | 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限 |
-| 能力工具 | `read` `list_dir` `run_python(cwd)` `write_file`（覆盖前备份）`git`（子命令白名单）+ MCP 工具 |
+| 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（子命令白名单）+ MCP 工具 |
 | 记录 | append-only 事件流、`Replay.review/tree/summary`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
 | 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、worker 级 `retries`、截断检测、预算熔断、续跑、中断 worker 可见、每轮快照续跑 |
@@ -50,7 +50,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 75 条用例（CI 用这个）
+pytest -q                    # 79 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
