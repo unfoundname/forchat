@@ -22,6 +22,7 @@ def main() -> int:
         print(f"bad payload: {exc}", file=sys.stderr)
         return 2
 
+    from . import tools as _tools  # noqa: F401  触发能力工具注册（否则 registry 是空的）
     from .policy import Policy
     from .primitives import Runtime, WorkflowDef
     from .primitives.types import WorkerInstance

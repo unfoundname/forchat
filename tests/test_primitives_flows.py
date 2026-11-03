@@ -395,6 +395,40 @@ def test_report_gate_requires_checks() -> None:
     assert root.report.summary == "检查后完成"
 
 
+def test_truncated_tool_call_is_dropped() -> None:
+    """finish_reason=length 时半截工具参数不执行，丢回给模型重写。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    truncated = [
+        {"choices": [{"delta": {"content": "想调用"}}]},
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call_1",
+            "function": {"name": "read_state", "arguments": '{"x":'},
+        }]}}]},
+        {"choices": [{"delta": {}, "finish_reason": "length"}]},
+    ]
+    responder = TemplateResponder(
+        {
+            "root": [
+                truncated,
+                tool_chunks([("report", {"summary": "重写后完成"})]),
+            ]
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    root = runtime.start("任务")
+
+    assert runtime.log.query(type="truncated_calls_dropped")
+    results = runtime.log.query(type="tool_result")
+    assert all(event.get("tool") != "read_state" for event in results), results
+    assert root.status == "done"
+    assert root.report.summary == "重写后完成"
+
+
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),
@@ -412,6 +446,7 @@ def main() -> int:
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
         ("契约冻结与注入", test_contracts_frozen_and_injected),
         ("report 前必须跑检查", test_report_gate_requires_checks),
+        ("截断的工具调用被丢弃", test_truncated_tool_call_is_dropped),
     ]
     return run("原语流程自检", checks)
 

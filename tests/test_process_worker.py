@@ -27,11 +27,16 @@ def test_leaf_worker_runs_in_subprocess() -> None:
     raw["workers"]["root"]["tools"] = ["spawn", "report"]
     raw["workers"]["root"]["can_spawn"] = ["coder"]
     raw["workers"]["root"]["hooks"] = {}
-    raw["workers"]["coder"]["tools"] = ["report"]
+    raw["workers"]["coder"]["tools"] = ["read", "report"]
     raw["workers"]["coder"]["hooks"] = {}
-    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+    workflow = WorkflowDef.from_dict(
+        raw, base_dir=MINIMAL.parent, known_tools={"read"}
+    )
 
-    _script_file([tool_chunks([("report", {"summary": "子进程完成"})])])
+    _script_file([
+        tool_chunks([("read", {"path": "README.md", "limit": 3})]),
+        tool_chunks([("report", {"summary": "子进程完成"})]),
+    ])
     parent = FakeProvider(
         TemplateResponder(
             {

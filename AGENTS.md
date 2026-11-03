@@ -15,13 +15,17 @@
 ```
 forchat/primitives/   原语：types / store / scheduler / hooks / workflow / replay / runtime*
 forchat/providers/    模型侧：base(Protocol) / fake(测试与演示) / deepseek(唯一用 SDK 的地方)
-forchat/tools/        能力工具（read、list_dir、run_python、MCP），经 tool_bridge 注入 Runtime
+forchat/tools/        能力工具（read/write/edit/grep/glob/run_python/git/web_*/screenshot/run_checks）
 forchat/skills/       技能加载
+forchat/server*.py    HTTP/SSE：server.py 路由 + server_manager.py 运行管理
+forchat/subproc.py    受限子进程 + 取消注册表（stop 时 kill 工具进程）
+forchat/stream_exec.py / worker_proc.py   请求级 / 整 worker 子进程（硬中断）
 forchat/__main__.py   只做装配与展示，不含执行逻辑（执行只在 primitives/runtime_worker.py）
 ```
 
 `Runtime` 按职责拆成 mixin（都 ≤ 500 行）：`runtime.py` 装配与调度、`runtime_worker.py` 执行循环、
-`runtime_tools.py` 工具、`runtime_state.py` 续跑/快照/metrics、`runtime_prompt.py` 提示词、`runtime_specs.py` schema。
+`runtime_tools.py` 工具、`runtime_state.py` 续跑/快照/metrics、`runtime_prompt.py` 提示词、
+`runtime_compact.py` compact、`runtime_specs.py` schema。
 
 历史包袱已清：旧的单 agent 循环（`agent.py`）和草案契约层（`core/contracts.py`）都已删除，它们和原语层重复。
 

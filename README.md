@@ -15,50 +15,55 @@ ForChat/
 │   └── release.md              发布说明：能力清单、真跑证据索引、已知边界
 ├── forchat/
 │   ├── __main__.py             CLI：只装配，不执行
-│   ├── primitives/             ★ 原语层（唯一执行循环在这里）
+│   ├── primitives/             ★ 原语层（唯一执行循环在 runtime_worker.py）
 │   │   ├── types.py            WorkerInstance / Budget / Report
-│   │   ├── store.py            EventLog：append-only 事件流
+│   │   ├── store.py            EventLog：events.jsonl + tools.jsonl，分段/文件锁/fsync
 │   │   ├── scheduler.py        并发准入（等待型子 worker 内联，避免死锁）
 │   │   ├── hooks.py            action / spawn 两类 hook
 │   │   ├── workflow.py         workflow.json 严格加载与校验
-│   │   ├── runtime.py          ★ Runtime：装配与调度（mixin 组合）
+│   │   ├── runtime.py          ★ Runtime：装配、调度、进程 worker、看门狗
 │   │   ├── runtime_worker.py   执行循环（唯一一份）+ 流式解析 + 收尾
-│   │   ├── runtime_tools.py    工具分发与运行时工具实现
-│   │   ├── runtime_state.py    续跑恢复 / plan / 执行快照 / metrics
+│   │   ├── runtime_compact.py  compact：归档 + 模型摘要 / 确定性兜底
+│   │   ├── runtime_tools.py    工具分发 + 运行时工具（spawn/report/facts/contracts/…）
+│   │   ├── runtime_state.py    续跑恢复 / plan / 追加式快照 / metrics
 │   │   ├── runtime_prompt.py   初始消息与兜底报告
 │   │   ├── runtime_specs.py    运行时工具 schema
-│   │   └── replay.py           review（人读）/ tree / tool_calls
-│   ├── providers/              base(Protocol) · fake(离线) · retry(瞬时重试) · deepseek(唯一用 SDK)
-│   ├── tools/                  能力工具：read / grep / glob / edit_file / run_python / write_file / git
+│   │   └── replay.py           review / tree / summary / graph
+│   ├── providers/              base · fake(离线) · retry · deepseek(唯一用 SDK)
+│   ├── tools/                  能力工具：read/grep/glob/edit_file/write_file/run_python/
+│   │                           git/web_fetch/web_search/screenshot/run_checks
 │   ├── skills/                 技能加载（SKILL.md）
-│   ├── mcp.py                  MCP 客户端（stdio + JSON-RPC）
-│   └── mcp_bridge.py           MCP 工具 → 工具注册表
-├── examples/
-│   ├── workflows/minimal/      最小 workflow 包（workflow.json + prompts/）
-│   ├── workflows/delivery/     交付示例：coder 落盘 → hook 派生 reviewer → root 用 git 核对
-│   ├── workflows/worktree/     worktree 并行示例：两个 coder 各建 worktree + 分支 + 提交
-│   ├── workflows/merge/        串行合并示例：把多个 feat 分支合进 integration 分支
-│   ├── workflows/capstone/     封顶样本：3 分支并行 → 汇合 → 串行合并 → 复跑
-│   ├── workflows/microproject/ 真项目示例：写代码 + 测试 + 自动验收
-│   ├── workflows/parallel/     并行示例：两个 coder 同时开工，wait_workers 汇合
-│   └── projects/               microproject / parallel 的真实产出（真跑通过）
-│   ├── run_demo.py             端到端自检（假 provider，无需 key）
-│   ├── mcp_demo_server.py      80 行的 MCP 服务端
-│   └── smoke_mcp.py            MCP 链路自检
+│   ├── server.py               HTTP/SSE/metrics/artifacts 路由
+│   ├── server_manager.py       RunManager：列表/状态/图/附件/停止/替换/缓存
+│   ├── stream_exec.py          请求级子进程（可 kill 的模型流）
+│   ├── stream_child.py         子进程入口（python -m forchat.stream_child）
+│   ├── worker_proc.py          整 worker 子进程入口（python -m forchat.worker_proc）
+│   ├── subproc.py              受限子进程 + 取消注册表（kill 工具进程）
+│   ├── policy.py               参数级护栏（不是沙箱）
+│   ├── pricing.py              价目表 → 成本
+│   ├── runs.py                 运行目录/compact 归档清理计划
+│   ├── env_scrub.py            子进程环境脱敏
+│   ├── registry.py             工具注册表
+│   ├── tool_bridge.py          registry → Runtime 的注入层
+│   ├── mcp.py / mcp_bridge.py  MCP 客户端与工具桥接
+│   └── skills/__init__.py      技能加载实现
 ├── tests/                     全部文件 ≤500 行
 │   ├── run_all.py              一条命令跑全部本地检查
 │   ├── _support.py             共享夹具：MINIMAL、tmpdir、用例执行器
-│   ├── test_primitives.py      原语：预算/配置校验/跨进程事件流（12 条）
-│   ├── test_primitives_flows.py    原语：派生/hook/并发（13 条）
-│   ├── test_primitives_resources.py 原语：compact/资源感知/排队/心跳（9 条）
-│   ├── test_primitives_lifecycle.py 原语：restart/每 worker 事实（3 条）
-│   ├── test_primitives_state.py    原语：状态/续跑/运行图（11 条）
-│   ├── test_primitives_guards.py   原语：scope/停止/快照/重试（8 条）
-│   ├── test_tools.py           工具：registry/provider/重试/成本（15 条）
-│   ├── test_policy.py          安全：policy/scope/脱敏/备份（8 条）
-│   ├── test_cli.py             CLI：--check/--inspect/--runs/--prune（7 条）
-│   ├── test_server.py          HTTP/SSE/metrics/鉴权/限流/停止（9 条）
-│   ├── test_subproc.py         受限子进程：超时/脱敏/内存上限（3 条）
+│   ├── test_primitives.py      预算/配置校验/跨进程事件流/工具日志（14 条）
+│   ├── test_primitives_flows.py    派生/hook/并发/契约冻结/report 门禁（15 条）
+│   ├── test_primitives_resources.py compact/资源感知/排队/心跳/看门狗（10 条）
+│   ├── test_primitives_lifecycle.py restart/每 worker 事实（3 条）
+│   ├── test_primitives_state.py    状态/续跑/自动恢复/运行图（11 条）
+│   ├── test_primitives_guards.py   scope/停止/快照/重试（8 条）
+│   ├── test_tools.py           registry/provider/重试/成本/read/edit/grep/glob（18 条）
+│   ├── test_policy.py          policy/scope/脱敏/备份（8 条）
+│   ├── test_cli.py             --check/--inspect/--runs/--prune（7 条）
+│   ├── test_server.py          HTTP/SSE/metrics/artifacts/强停（13 条）
+│   ├── test_subproc.py         超时/脱敏/内存上限/取消 kill（5 条）
+│   ├── test_stream.py          请求级子进程 / 超时硬杀 / 取消硬杀（3 条）
+│   ├── test_process_worker.py  叶子 worker 子进程执行 / 子进程硬杀（2 条）
+│   ├── test_web.py             web_search / 视觉标记（3 条）
 │   └── test_layering.py        依赖方向 / 领域词 / 唯一循环 / 单文件 ≤500 行
 ├── skills/                     技能目录（数据）
 └── mcp_servers.json            MCP 服务端配置
@@ -78,19 +83,20 @@ pip install -e ".[llm]"     # 接真模型：装 openai
 ```powershell
 python tests/run_all.py            # 全部本地检查（全部测试文件 + 分层 + demo + MCP，推荐）
 pytest -q                          # 同一批用例走 pytest（CI 用的就是这个）
-python tests/test_primitives.py    # 原语：预算/配置校验
-python tests/test_primitives_flows.py   # 原语：派生/hook/并发
-python tests/test_stream.py             # 请求级子进程硬中断
-python tests/test_web.py                # web_search/视觉标记
-python tests/test_primitives_resources.py   # 原语：上下文裁剪/资源感知/排队
-python tests/test_primitives_lifecycle.py   # 原语：restart/事实
-python tests/test_primitives_state.py   # 原语：状态/续跑/运行图
-python tests/test_primitives_guards.py  # 原语：scope/停止/快照/重试
-python tests/test_tools.py         # 工具：registry/provider/重试/成本
-python tests/test_policy.py        # 安全：policy/scope/脱敏/备份
-python tests/test_cli.py           # CLI：--check/--inspect/--runs/--prune
-python tests/test_server.py        # HTTP/SSE/metrics/鉴权/限流/停止
-python tests/test_subproc.py       # 受限子进程：超时/脱敏/内存上限
+python tests/test_primitives.py            # 原语：预算/配置校验
+python tests/test_primitives_flows.py      # 原语：派生/hook/并发
+python tests/test_primitives_resources.py  # 原语：compact/资源/排队/心跳
+python tests/test_primitives_lifecycle.py  # 原语：restart/事实
+python tests/test_primitives_state.py      # 原语：状态/续跑/运行图
+python tests/test_primitives_guards.py     # 原语：scope/停止/快照/重试
+python tests/test_tools.py                 # 工具：registry/provider/重试/成本
+python tests/test_policy.py                # 安全：policy/scope/脱敏/备份
+python tests/test_cli.py                   # CLI：--check/--inspect/--runs/--prune
+python tests/test_server.py                # HTTP/SSE/metrics/artifacts/强停
+python tests/test_subproc.py               # 受限子进程：超时/脱敏/取消
+python tests/test_stream.py                # 请求级子进程硬中断
+python tests/test_process_worker.py        # 整 worker 进程化硬杀
+python tests/test_web.py                   # web_search/视觉标记
 python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
 ```
 

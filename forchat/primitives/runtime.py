@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from .runtime_compact import CompactMixin
 from .runtime_prompt import PromptMixin
 from .runtime_state import StateMixin
 from .runtime_tools import ToolsMixin
@@ -29,7 +30,7 @@ from .types import Budget, Report, WorkerInstance
 from .workflow import WorkflowDef
 
 
-class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
+class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
 
     def __init__(
         self,
