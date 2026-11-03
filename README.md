@@ -97,6 +97,7 @@ python -m forchat --resume .runs/<run> "继续推进"                    # 在�
 | `worktree` | 隔离分支开发 + worktree 内自测 | git worktree / run_python(cwd) |
 | `merge` | 串行合并多个功能分支 | git merge |
 | `capstone` | 封顶：3 分支并行 → 汇合 → 串行合并 → 复跑 | spawn(wait=false) / wait_workers / git merge |
+| `scale` | 规模：6 分支并行（并发上限 4）→ 汇合 → 合并 → 复跑 | 同上 + 并发限流 |
 
 ## 写一个 workflow 包
 
@@ -316,6 +317,21 @@ root
 - 同一轮里 verifier 因 `APITimeoutError` 失败——**整次运行没有崩**，root 照常收尾（失败隔离生效）；
 - 这次实验暴露了一个真问题：hook 派生的 review 失败时父 worker 看不到。已修：`spawn(wait=true)`
   的返回里现在附带"子 worker 的派生：n003-reviewer(reviewer) failed"。
+
+## 规模样本（scale）
+
+`examples/workflows/scale` 把 capstone 从 3 分支放大到 6 分支，`max_concurrent=4` 用于验证限流：
+
+| 指标 | 实测 |
+|---|---|
+| worker 数 | 7（root + 6 coder） |
+| 事件数 | 8114 |
+| tokens | 44198 / 400000（11%） |
+| 墙钟 | 167.7s（6 个 worker 合计 449.4s，重叠执行） |
+| 结果 | 6 分支全部合并、6 个测试套件独立复跑 `ALL PASS`，master 未动 |
+
+同一次运行里护栏触发了 1 次：root 试图让 `run_python` 执行非 `.py` 文件，被
+`tool_denied: 只能执行 .py 脚本` 拒绝——说明护栏在真实运行里是在生效的。
 
 ## 续跑
 
