@@ -56,6 +56,7 @@ python -m forchat --skills         # 技能
 python -m forchat --mcp            # 连 MCP 服务端
 python -m forchat --inspect .runs/<run>   # 复查一次历史运行（树 + 每个 worker 的消耗与摘要）
 python -m forchat --check examples/workflows/minimal/workflow.json   # 只校验配置，不跑模型
+python -m forchat --resume .runs/<run> "继续推进"                    # 在同一个运行目录上续跑
 ```
 
 ## 三层
@@ -95,6 +96,8 @@ examples/workflows/minimal/
 运行时只给模型六个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
 `read_worker_report`（父 worker 回看子报告，不用翻事件流）。
+
+`write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 
 **轮数默认不限**：协调型 worker 跑几十上百轮是正常的，真正的闸是预算（tokens / wall_seconds）
 和整轮墙钟。需要给单个模板设上限时，在 `workflow.json` 里写 `max_rounds`。
@@ -138,6 +141,17 @@ def upper(text: str) -> str:
 
 它**不是沙箱**：不防任意代码执行，真正的隔离（容器、cgroup、只读挂载）属于部署层。
 被拒时返回错误回执给模型，不中断整个运行。
+
+## 续跑
+
+`python -m forchat` 会把整个 workflow 包快照进运行目录（`workflow.json` + `prompts/`），
+运行目录因此是自包含的：
+
+- `--inspect <run-dir>`：只读复查（树 + 每个 worker 的消耗与摘要）；
+- `--resume <run-dir> "新目标"`：在同一个事件流上继续推进。
+
+续跑语义是「继续推进这个项目」，不是复活死掉的 worker：历史 worker 只读、新 worker 序号接着涨，
+根 worker 的系统提示里会带上历史摘要（全文用 `read_worker_report` 查）。
 
 ## 学习路径
 

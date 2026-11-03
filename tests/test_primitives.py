@@ -557,6 +557,54 @@ def test_deepseek_provider_maps_chunks() -> None:
     assert captured["extra_body"] == {"thinking": {"type": "enabled"}}
 
 
+def test_resume_restores_workers_and_seq() -> None:
+    """同一 run 目录再打开：历史 worker / 报告可读，序号接着涨。"""
+    workflow = WorkflowDef.load(MINIMAL)
+    run_dir = tmpdir()
+
+    first = TemplateResponder({"root": [tool_chunks([("report", {"summary": "第一轮"})])]})
+    Runtime(workflow, FakeProvider(first), run_dir).start("第一轮")
+
+    second = TemplateResponder({"root": [tool_chunks([("report", {"summary": "第二轮"})])]})
+    provider2 = FakeProvider(second)
+    resumed = Runtime(workflow, provider2, run_dir)
+    assert "n001-root" in resumed.workers
+    assert resumed.workers["n001-root"].report.summary == "第一轮"
+    assert any(event["type"] == "run_resumed" for event in resumed.log.read())
+
+    root2 = resumed.start("第二轮")
+    assert root2.id.startswith("n002-"), root2.id
+    system_prompt = provider2.seen[0][0]["content"]
+    assert "历史运行" in system_prompt and "第一轮" in system_prompt
+    assert root2.report.summary == "第二轮"
+
+
+def test_artifact_indexed_into_report() -> None:
+    """write_artifact 的产出自动进 report.artifacts，模型不用手抄路径。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["write_artifact", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("write_artifact", {"name": "note.txt", "content": "hello"})]),
+                tool_chunks([("report", {"summary": "已交付"})]),
+            ]
+        }
+    )
+    run_dir = tmpdir()
+    runtime = Runtime(workflow, FakeProvider(responder), run_dir)
+    root = runtime.start("写附件")
+
+    assert root.report.artifacts, root.report.to_dict()
+    artifact = Path(run_dir) / root.report.artifacts[0]
+    assert artifact.is_file()
+    assert artifact.read_text(encoding="utf-8") == "hello"
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -585,6 +633,8 @@ def main() -> int:
         ("replay summary", test_replay_summary),
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
         ("deepseek provider 映射", test_deepseek_provider_maps_chunks),
+        ("续跑恢复历史 worker", test_resume_restores_workers_and_seq),
+        ("附件自动进报告", test_artifact_indexed_into_report),
     ]
     failed = 0
     for name, fn in checks:

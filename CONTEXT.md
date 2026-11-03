@@ -23,7 +23,8 @@
   - `spawn` hook：派生新 worker（"完成后自动派 review"）。
 - **plan**：运行时状态（`read_state` / `write_note` 读写），允许随时修改；它存在文件里，不靠对话记忆。
 - **EventLog**：append-only 事件流，是"完整存储"的唯一物理形态。会话、重放、复盘都从它读。
-- **Replay**：`review()`（人读的流水账）/ `rerun`（读录像重放工具调用，不调模型）。
+- **Replay**：只读重建一次运行——`review()` 流水账、`tree()` 派生树、`summary()` 每个 worker 的消耗与摘要。
+- **续跑（resume）**：同一 run 目录再次运行。历史 worker 只读、序号接着涨，根 worker 的系统提示里带历史摘要。
 - **围栏（fence）**：能力限制，优先于事后熔断。递归靠 `can_spawn` 为空来杜绝，不是靠层数。
 
 ## 不用这些词

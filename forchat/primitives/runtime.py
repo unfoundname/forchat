@@ -150,6 +150,57 @@ class Runtime:
         self._lock = threading.RLock()
         self._seq = 0
         self.started_at = time.time()
+        self._restored: list[str] = []
+        self._restore()
+
+    # ------------------------------------------------------------------ 续跑
+    def _restore(self) -> None:
+        """同一 run 目录再次打开时，恢复历史 worker / 报告 / 序号。
+
+        续跑语义：**继续推进这个项目**，而不是复活死掉的 worker。
+        历史 worker 只读；新 worker 从 n<seq+1> 开始编号，事件追加在同一条流里。
+        """
+        events = self.log.read()
+        if not events:
+            return
+
+        for event in events:
+            kind = event.get("type")
+            wid = event.get("worker_id")
+            if kind == "worker_created" and wid and wid not in self.workers:
+                self.workers[wid] = WorkerInstance(
+                    id=wid,
+                    template=str(event.get("template", "?")),
+                    task=str(event.get("task", "")),
+                    parent_id=event.get("parent"),
+                    depth=int(event.get("depth", 0)),
+                )
+            elif kind == "worker_done" and wid in self.workers:
+                self.workers[wid].status = event.get("status", "failed")
+            elif kind == "report" and wid in self.workers:
+                data = event.get("report") or {}
+                self.workers[wid].report = Report(
+                    worker_id=wid,
+                    status=str(data.get("status", "done")),
+                    summary=str(data.get("summary", "")),
+                    artifacts=[str(a) for a in data.get("artifacts") or []],
+                    decisions=[str(d) for d in data.get("decisions") or []],
+                    unresolved=[str(u) for u in data.get("unresolved") or []],
+                    evidence=[str(e) for e in data.get("evidence") or []],
+                    budget=data.get("budget") or {},
+                )
+
+        for wid in self.workers:
+            digits = wid[1:].split("-", 1)[0]
+            if digits.isdigit():
+                self._seq = max(self._seq, int(digits))
+
+        self._restored = list(self.workers)
+        self.log.append(
+            "run_resumed",
+            workers=len(self.workers),
+            next_seq=self._seq + 1,
+        )
 
     # ------------------------------------------------------------------ 状态
     def _load_state(self) -> dict[str, Any]:
@@ -425,11 +476,14 @@ class Runtime:
         return f"子 worker {child.id} 已在后台启动"
 
     def _tool_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        declared = [str(a) for a in args.get("artifacts") or []]
+        # 自己 write_artifact 过的文件自动进索引，模型不用再手抄一遍路径
+        merged = list(dict.fromkeys([*worker.artifacts, *declared]))
         worker.report = Report(
             worker_id=worker.id,
             status="done",
             summary=str(args.get("summary", "")),
-            artifacts=[str(a) for a in args.get("artifacts") or []],
+            artifacts=merged,
             decisions=[str(d) for d in args.get("decisions") or []],
             unresolved=[str(u) for u in args.get("unresolved") or []],
             evidence=[str(e) for e in args.get("evidence") or []],
@@ -456,6 +510,7 @@ class Runtime:
         if not name:
             return "错误：write_artifact 需要 name"
         path = self.log.artifact(f"{worker.id}-{name}", str(args.get("content", "")))
+        worker.artifacts.append(path)
         return f"附件已写入 {path}"
 
     def _tool_read_worker_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
@@ -525,6 +580,19 @@ class Runtime:
                     mounted.append(f"## 技能：{name}\n{body}")
         if mounted:
             system += "\n--- 已挂载技能 ---\n" + "\n\n".join(mounted) + "\n"
+
+        # 续跑：把历史 worker 的结论直接摆在新的根 worker 面前，别让它以为从零开始
+        if worker.parent_id is None and self._restored:
+            lines = []
+            for wid in self._restored[-12:]:
+                prev = self.workers[wid]
+                summary = (prev.report.summary if prev.report else "")[:200]
+                lines.append(f"- {wid} [{prev.template}] {prev.status}: {summary or '（无报告）'}")
+            system += (
+                "\n--- 历史运行（同一 run 目录的上一轮）---\n"
+                + "\n".join(lines)
+                + "\n需要全文时用 read_worker_report(worker_id)；plan 与笔记用 read_state 读。\n"
+            )
 
         return [
             {"role": "system", "content": system},

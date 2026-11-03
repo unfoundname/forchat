@@ -87,3 +87,4 @@ class WorkerInstance:
     status: Status = "pending"
     budget: Budget = field(default_factory=Budget)
     report: Report | None = None
+    artifacts: list[str] = field(default_factory=list)

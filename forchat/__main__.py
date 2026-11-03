@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,7 @@ USAGE = """用法:
   python -m forchat --mcp       连接 mcp_servers.json 里的服务端
   python -m forchat --inspect <run-dir>   复查一次历史运行
   python -m forchat --check <workflow>   只校验 workflow 配置，不跑模型
+  python -m forchat --resume <run-dir> [目标]   在同一个运行目录上继续推进
 """
 
 
@@ -89,25 +91,12 @@ def _list_skills() -> None:
         print(f"{name:12} {skill.description}\n{'':12} {skill.path}")
 
 
-def _run_workflow(path: Path, goal: str) -> int:
+def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     from .policy import Policy
     from .providers.deepseek import DeepSeekProvider
-    from .skills import load_skills
-    from .tool_bridge import build as build_tools, build_skill_loader, known_names
+    from .tool_bridge import build as build_tools, build_skill_loader
 
-    connect_from_config()                      # 先连 MCP，它的工具才算"已有能力"
-    try:
-        workflow = WorkflowDef.load(
-            path,
-            known_tools=known_names(),
-            known_skills=set(load_skills()),
-        )
-    except WorkflowError as exc:
-        print(f"workflow 配置有误：{exc}")
-        return 2
-
-    run_dir = Path(".runs") / f"{workflow.name}-{time.strftime('%Y%m%d-%H%M%S')}"
-    runtime = Runtime(
+    return Runtime(
         workflow,
         DeepSeekProvider(),
         run_dir,
@@ -115,7 +104,11 @@ def _run_workflow(path: Path, goal: str) -> int:
         skill_loader=build_skill_loader(),
         guard=Policy(Path.cwd()).check,
     )
-    print(f"[run] workflow={workflow.name} entry={workflow.entry} dir={run_dir}")
+
+
+def _execute(workflow: WorkflowDef, run_dir: Path, goal: str, label: str = "run") -> int:
+    runtime = _assemble(workflow, run_dir)
+    print(f"[{label}] workflow={workflow.name} entry={workflow.entry} dir={run_dir}")
 
     try:
         root = runtime.start(goal)
@@ -133,6 +126,54 @@ def _run_workflow(path: Path, goal: str) -> int:
     print(f"\n[done] status={root.status} workers={len(runtime.workers)} 事件={len(runtime.log.read())}")
     print(f"[done] summary={report.get('summary', '')}")
     return 0 if root.status == "done" else 1
+
+
+def _run_workflow(path: Path, goal: str) -> int:
+    from .skills import load_skills
+    from .tool_bridge import known_names
+
+    connect_from_config()                      # 先连 MCP，它的工具才算"已有能力"
+    try:
+        workflow = WorkflowDef.load(
+            path,
+            known_tools=known_names(),
+            known_skills=set(load_skills()),
+        )
+    except WorkflowError as exc:
+        print(f"workflow 配置有误：{exc}")
+        return 2
+
+    run_dir = Path(".runs") / f"{workflow.name}-{time.strftime('%Y%m%d-%H%M%S')}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    # 把整个 workflow 包（workflow.json + prompts/ + 脚本）快照进运行目录：
+    # --resume / --inspect 只依赖运行目录，不依赖原始路径。
+    for item in path.parent.iterdir():
+        target = run_dir / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True)
+        elif item.is_file():
+            shutil.copy2(item, target)
+    return _execute(workflow, run_dir, goal)
+
+
+def _resume(run_dir: Path, goal: str) -> int:
+    from .skills import load_skills
+    from .tool_bridge import known_names
+
+    snapshot = run_dir / "workflow.json"
+    if not snapshot.is_file():
+        print(f"运行目录里没有 workflow.json 快照：{run_dir}")
+        return 2
+
+    connect_from_config()
+    try:
+        workflow = WorkflowDef.load(
+            snapshot, known_tools=known_names(), known_skills=set(load_skills())
+        )
+    except WorkflowError as exc:
+        print(f"workflow 快照有误：{exc}")
+        return 2
+    return _execute(workflow, run_dir, goal, label="resume")
 
 
 def main() -> None:
@@ -163,6 +204,12 @@ def main() -> None:
             print("--check 需要一个 workflow 路径")
             return
         raise SystemExit(_check(Path(args[1])))
+    if args and args[0] == "--resume":
+        if len(args) < 2:
+            print("--resume 需要一个运行目录")
+            return
+        goal = " ".join(args[2:]) or "继续推进该项目：先 read_state 看历史 plan 与笔记"
+        raise SystemExit(_resume(Path(args[1]), goal))
 
     workflow_path = DEFAULT_WORKFLOW
     if args[:1] == ["--workflow"]:
