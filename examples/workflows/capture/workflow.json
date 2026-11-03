@@ -1,0 +1,26 @@
+{
+  "name": "capture",
+  "version": 1,
+  "entry": "root",
+  "limits": {
+    "max_concurrent": 1,
+    "max_depth": 1,
+    "max_workers": 2,
+    "max_wall_seconds": 300
+  },
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": [],
+      "tools": [
+        "window_screenshot",
+        "page_screenshot",
+        "report"
+      ],
+      "budget": {
+        "tokens": 200000,
+        "wall_seconds": 240
+      }
+    }
+  }
+}

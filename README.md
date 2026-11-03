@@ -182,7 +182,7 @@ python -m forchat --workflow examples/workflows/delivery/workflow.json "目标"
 
 ## 示例一览
 
-六个 workflow 包各自验证一组原语，互相不重复（prompt 也几乎没有公共模板——审计过，唯一重复的行是 `## 工作方式` 这个小标题）：
+下面这些 workflow 包各自验证一组原语，互相不重复（prompt 也几乎没有公共模板——审计过，唯一重复的行是 `## 工作方式` 这个小标题）：
 
 | 包 | 演示什么 | 主要原语 |
 |---|---|---|
@@ -195,6 +195,7 @@ python -m forchat --workflow examples/workflows/delivery/workflow.json "目标"
 | `capstone` | 封顶：3 分支并行 → 汇合 → 串行合并 → 复跑 | spawn(wait=false) / wait_workers / git merge |
 | `scale` | 规模：6 分支并行（并发上限 4）→ 汇合 → 合并 → 复跑 | 同上 + 并发限流 |
 | `stress` | 压力：10 分支并行（并发 4 排队）→ 合并 10 次 → 复跑 | 同上 + 排队与护栏压力 |
+| `capture` | worker 自己截应用窗口/网页，看图后 report | window_screenshot / page_screenshot / 视觉 |
 
 ## 写一个 workflow 包
 
