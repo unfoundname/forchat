@@ -148,8 +148,12 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     from .pricing import Pricing
     from .providers.deepseek import DeepSeekProvider
     from .providers.retry import RetryProvider
+    from .remote_executor import RemoteExecutor
     from .tool_bridge import build as build_tools
     from .tool_bridge import build_skill_loader
+
+    remote_dir = os.environ.get("FORCHAT_REMOTE_DIR", "").strip()
+    remote_executor = RemoteExecutor(remote_dir) if remote_dir else None
 
     attempts = int(os.environ.get("FORCHAT_RETRIES", 2))
     provider = DeepSeekProvider()
@@ -176,6 +180,7 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         cancel_processes=subproc.cancel_worker,
         process_workers=os.environ.get("FORCHAT_PROCESS_WORKERS") == "1",
         spawn_process=spawn_process,
+        remote_executor=remote_executor,
     )
 
 

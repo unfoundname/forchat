@@ -146,7 +146,10 @@ class ToolsMixin:
         self.log.append("worker_queued", worker_id=child.id,
                         pending=self.scheduler.stats()["pending"] + 1,
                         max_concurrent=self.scheduler.max_concurrent)
-        if self.process_workers and not self.wf.workers[child.template].can_spawn:
+        tpl = self.wf.workers[child.template]
+        if not tpl.can_spawn and self.remote_executor is not None:
+            future = self.scheduler.submit(self._run_remote_worker, child)
+        elif self.process_workers and not tpl.can_spawn:
             future = self.scheduler.submit(self._run_process_worker, child)
         else:
             future = self.scheduler.submit(self._run_worker, child, resume)

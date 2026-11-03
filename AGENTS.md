@@ -21,6 +21,7 @@ forchat/server*.py    HTTP/SSE：server.py 路由 + server_manager.py 运行管�
 forchat/exec.py       唯一进程出口：环境脱敏/沙箱/取消/限额都在这里
 forchat/subproc.py    受限子进程封装（超时/取消），内部只调 exec.spawn
 forchat/stream_exec.py / worker_proc.py   请求级 / 整 worker 子进程（硬中断）
+forchat/remote_*.py   分布式执行：共享目录队列 / agent / coordinator 执行器
 forchat/__main__.py   只做装配与展示，不含执行逻辑（执行只在 primitives/runtime_worker.py）
 ```
 

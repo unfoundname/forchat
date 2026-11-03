@@ -10,10 +10,7 @@
 """
 from __future__ import annotations
 
-import json
 import os
-import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -21,6 +18,7 @@ from typing import Any, Callable
 
 from .runtime_compact import CompactMixin
 from .runtime_prompt import PromptMixin
+from .runtime_remote import RemoteMixin
 from .runtime_state import StateMixin
 from .runtime_tools import ToolsMixin
 from .runtime_worker import WorkerMixin
@@ -30,7 +28,7 @@ from .types import Budget, Report, WorkerInstance
 from .workflow import WorkflowDef
 
 
-class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
+class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, RemoteMixin):
 
     def __init__(
         self,
@@ -50,6 +48,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         cancel_processes: Callable[[str], Any] | None = None,
         process_workers: bool = False,
         spawn_process: Callable[..., Any] | None = None,
+        remote_executor: Callable[[dict, Callable[[], bool]], dict] | None = None,
         restore: bool = True,
     ) -> None:
         self.wf = workflow
@@ -62,6 +61,8 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         self.cancel_processes = cancel_processes
         # 进程 worker 的启动函数（装配层传 forchat.exec.spawn；原语层不认识具体实现）
         self.spawn_process = spawn_process
+        # 分布式执行：装配层注入 remote_executor(payload, cancel) -> result；None = 本地
+        self.remote_executor = remote_executor
         # 叶子 worker 是否跑在独立子进程里（真硬中断）；子进程自己不再嵌套
         self.process_workers = process_workers
         self.hooks_enabled = True
@@ -192,7 +193,6 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         old = self.workers.get(worker_id)
         if old is None:
             return None
-        self.force_stop(worker_id)
         child = self._create_worker(
             old.template,
             task or old.task,
@@ -205,108 +205,13 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         child.facts_owner = old.facts_owner or old.id
         self.log.append("worker_replaced", old=worker_id, new=child.id,
                         task=(task or old.task)[:120])
-        self._submit(child)
+        try:
+            self._submit(child)              # 先排新实例，再停旧的，避免运行结束竞态
+        except RuntimeError:
+            child.status = "failed"
+            return None
+        self.force_stop(worker_id)
         return child
-
-    def _run_child_worker(self, worker: WorkerInstance) -> None:
-        """叶子 worker 若开了进程模式就丢进子进程跑，否则原地跑线程。"""
-        tpl = self.wf.workers[worker.template]
-        if self.process_workers and not tpl.can_spawn:
-            self._run_process_worker(worker)
-            return
-        self._run_worker(worker)
-
-    def _run_process_worker(self, worker: WorkerInstance) -> None:
-        """在子进程里跑完一个叶子 worker 的完整循环；stop 时 kill 子进程。"""
-        worker.status = "running"
-        self._run_hooks(worker, "on_start")   # 父进程侧跑 hook（子进程里禁用）
-        payload = {
-            "workflow": self.wf.to_dict(),
-            "base_dir": str(self.wf.base_dir),
-            "run_dir": str(self.dir),
-            "model": self.model,
-            "facts_dir": str(getattr(self, "facts_dir", "")),
-            "worker": {
-                "id": worker.id,
-                "template": worker.template,
-                "task": worker.task,
-                "parent_id": worker.parent_id,
-                "depth": worker.depth,
-                "scope": list(worker.scope),
-                "facts_owner": worker.facts_owner,
-            },
-        }
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-        if self.spawn_process is None:
-            raise RuntimeError("进程 worker 需要装配层注入 spawn_process（forchat.exec.spawn）")
-        proc = self.spawn_process(
-            [sys.executable, "-m", "forchat.worker_proc"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            scrub=False,
-        )
-        assert proc.stdin
-        proc.stdin.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-        proc.stdin.flush()
-
-        stop_event = self._stop_events.setdefault(worker.id, threading.Event())
-        killed = False
-        while True:
-            if stop_event.is_set():
-                proc.kill()
-                killed = True
-                break
-            try:
-                proc.wait(timeout=0.2)
-                break
-            except subprocess.TimeoutExpired:
-                continue
-
-        stderr = proc.stderr.read() if proc.stderr else ""
-        if proc.stderr:
-            proc.stderr.close()
-
-        result_path = self.dir / "workers" / f"{worker.id}.result.json"
-        data: dict[str, Any] | None = None
-        if result_path.is_file():
-            try:
-                data = json.loads(result_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                data = None
-
-        if killed or stop_event.is_set():
-            worker.status = "killed"
-            worker.report = Report(worker_id=worker.id, status="failed",
-                                   summary="（被硬中断：子进程已 kill）")
-            self.log.append("worker_hard_killed", worker_id=worker.id, pid=proc.pid)
-            return
-        if data is None:
-            worker.status = "failed"
-            worker.report = Report(worker_id=worker.id, status="failed",
-                                   summary=f"（worker 子进程异常退出 rc={proc.returncode}）")
-            self.log.append("worker_error", worker_id=worker.id,
-                            error=f"worker_proc rc={proc.returncode} {stderr[-300:]}")
-            return
-
-        report = data.get("report") or {}
-        worker.report = Report(
-            worker_id=worker.id,
-            status=str(report.get("status", "done")),
-            summary=str(report.get("summary", "")),
-            artifacts=[str(a) for a in report.get("artifacts") or []],
-            decisions=[str(d) for d in report.get("decisions") or []],
-            unresolved=[str(u) for u in report.get("unresolved") or []],
-            evidence=[str(e) for e in report.get("evidence") or []],
-            budget=report.get("budget") or {},
-        )
-        worker.status = str(data.get("status") or "failed")
-        tokens = int(data.get("tokens") or 0)
-        if tokens:
-            self._charge_total(tokens, data.get("cost_usd"))
-        self._run_hooks(worker, "on_done" if worker.status == "done" else "on_fail")
 
     def start(self, task: str, template: str | None = None) -> WorkerInstance | None:
         self.run_deadline = time.time() + self.max_wall_seconds
@@ -325,6 +230,15 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
             watchdog.set()
             # 无论成功还是异常，都要收掉线程池并留下"运行结束"事件，否则事件流读不出结尾
             self.scheduler.shutdown()
+            for leftover in self.workers.values():
+                if leftover.status in ("queued", "running"):
+                    leftover.status = "killed"
+                    if leftover.report is None:
+                        leftover.report = Report(
+                            worker_id=leftover.id, status="failed",
+                            summary="（运行结束：worker 未完成）",
+                        )
+                    self.log.append("worker_killed_on_shutdown", worker_id=leftover.id)
             final_status = status
             if status == "done":
                 final_status = "done" if root.status == "done" else (

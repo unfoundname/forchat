@@ -54,12 +54,12 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 145 条用例（CI 用这个）
+pytest -q --cov=forchat --cov-fail-under=65   # 148 条用例 + 覆盖率门槛（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
-- `tests/test_primitives.py`：13 条（预算/配置校验/跨进程事件流/工具事件分离）
-- `tests/test_primitives_flows.py`：15 条（派生/hook/并发/契约冻结/report 门禁）
+- `tests/test_primitives.py`：14 条（预算/配置校验/跨进程事件流/工具事件分离/工具日志滚动）
+- `tests/test_primitives_flows.py`：16 条（派生/hook/并发/契约冻结/report 门禁/截断调用丢弃）
 - `tests/test_primitives_lifecycle.py`：3 条（restart/每 worker 事实）
 - `tests/test_primitives_resources.py`：10 条（compact/保留配置/资源感知/排队/心跳/看门狗）
 - `tests/test_primitives_state.py`：11 条（状态/续跑/自动恢复/运行图）
@@ -69,12 +69,13 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
 - `tests/test_server.py`：13 条（HTTP / SSE 分段+断点续传 / metrics 缓存/卡死计数 / 摘要签名缓存 / artifacts 列表+下载 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
 - `tests/test_stream.py`：3 条（请求级子进程 / 超时硬杀 / 取消硬杀）
-- `tests/test_web.py`：3 条（web_search 后端 / 视觉标记转多模态）
+- `tests/test_web.py`：11 条（web_search / DeepSeek schema / Fetch 后端 / 视觉 / SSRF 边界）
 - `tests/test_process_worker.py`：2 条（叶子 worker 子进程执行 / 子进程硬杀）
 - `tests/test_concurrency.py`：4 条（原子写 / 旧 hash 拒绝 / edit 校验 hash+mtime）
 - `tests/test_locks.py`：3 条（同进程等锁 / 超时 / 跨进程互斥）
 - `tests/test_sandbox_win.py`：4 条（工作区写/外部拒 / read-only / fail-closed / 关闭对比；非 Windows 跳过）
 - `tests/test_exec.py`：2 条（环境脱敏 / 按 worker kill）
+- `tests/test_remote.py`：3 条（共享目录队列 / 远程叶子 worker / 远程取消）
 - `tests/test_subproc.py`：5 条（超时 / 脱敏环境 / 内存上限 / 取消 kill 工具子进程 / force_stop 联动）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

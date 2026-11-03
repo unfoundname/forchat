@@ -85,9 +85,10 @@ def main() -> int:
         "tokens": worker.budget.spent_tokens,
         "cost_usd": report.get("cost_usd"),
     }
-    out = Path(payload["run_dir"]) / "workers" / f"{worker.id}.result.json"
+    out = Path(payload.get("result_path")
+               or Path(payload["run_dir"]) / "workers" / f"{worker.id}.result.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_suffix(".tmp")
+    tmp = out.with_name(f"{out.name}.tmp")
     tmp.write_text(json.dumps(result, ensure_ascii=False, default=str), encoding="utf-8")
     tmp.replace(out)
     return 0

@@ -40,6 +40,9 @@ ForChat/
 │   ├── stream_exec.py          请求级子进程（可 kill 的模型流）
 │   ├── stream_child.py         子进程入口（python -m forchat.stream_child）
 │   ├── worker_proc.py          整 worker 子进程入口（python -m forchat.worker_proc）
+│   ├── remote_queue.py         共享目录任务队列（租约/心跳/取消/结果）
+│   ├── remote_agent.py         远程 worker agent（python -m forchat.remote_agent）
+│   ├── remote_executor.py      coordinator 侧远程执行器（注入 Runtime）
 │   ├── subproc.py              受限子进程 + 取消注册表（kill 工具进程）
 │   ├── policy.py               参数级护栏（不是沙箱）
 │   ├── pricing.py              价目表 → 成本
@@ -148,6 +151,19 @@ docker compose run --rm forchat --workflow examples/workflows/minimal/workflow.j
 
 注意：容器隔离的是**部署环境**，不是引擎内部工具；`run_python` 在容器里仍是任意代码，
 真正的边界来自只读根、挂载范围、用户权限和网络策略（见 [docs/sandbox.md](docs/sandbox.md)）。
+
+## 分布式执行（可选）
+
+默认本地线程/子进程。设置 `FORCHAT_REMOTE_DIR` 指向共享目录后，**叶子 worker** 会被投递到
+队列，由其他机器上的 `python -m forchat.remote_agent --queue <dir>` 租约执行、回传结果：
+
+```powershell
+$env:FORCHAT_REMOTE_DIR = "\\shared\forchat\queue"
+python -m forchat --workflow examples/workflows/delivery/workflow.json "目标"
+```
+
+支持租约、心跳、超时重派、协作式取消；要求 queue 和 run 目录共享、执行机代码版本一致。
+安全与限制见 [docs/distributed.md](docs/distributed.md)（这是信任边界，不是零信任协议）。
 
 ## 三层
 
