@@ -127,9 +127,9 @@ examples/workflows/minimal/
 ## 能力工具（read / list_dir / run_python / write_file / git）
 
 - `read` / `list_dir`：读文件与目录；
-- `run_python`：执行 `skills/`、`examples/` 下的脚本；
+- `run_python`：执行脚本，支持 `cwd`（worktree 里跑测试就靠它）；
 - `write_file`：把内容真正落盘（路径安全由 policy 统一拦）；
-- `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/…），不是裸 shell。
+- `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell。
 
 在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
 

@@ -48,6 +48,14 @@ class Policy:
         if resolved.suffix.lower() in DENY_SUFFIXES:
             return f"敏感文件：{resolved.name}"
 
+        # cwd 也要在项目根内：否则工具只是"执行位置"越界，同样能读写到外面
+        raw_cwd = args.get("cwd")
+        if raw_cwd:
+            cwd_path = Path(str(raw_cwd)).expanduser()
+            resolved_cwd = cwd_path.resolve() if cwd_path.is_absolute() else (self.root / cwd_path).resolve()
+            if not self._inside(resolved_cwd, self.root):
+                return f"工作目录越界：{resolved_cwd}"
+
         if tool == "run_python":
             if resolved.suffix != ".py":
                 return "只能执行 .py 脚本"

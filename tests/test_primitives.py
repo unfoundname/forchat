@@ -637,6 +637,7 @@ def test_summary_has_totals() -> None:
     runtime.start("任务")
     summary = Replay(runtime.log).summary()
     assert "合计:" in summary
+    assert "运行: status=" in summary
     assert "workers=1" in summary
 
 
@@ -957,6 +958,32 @@ def test_total_budget_caps_whole_run() -> None:
     assert rejected and rejected[-1]["reason"] == "total_budget"
 
 
+def test_run_python_cwd() -> None:
+    """run_python 支持 cwd：worktree 里跑测试靠它。"""
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    script = work / "where.py"
+    script.write_text(
+        "import os\nprint(os.getcwd())\nassert __file__.endswith('where.py')\n",
+        encoding="utf-8",
+    )
+    result = registry.execute(
+        "run_python", json.dumps({"script": "where.py", "cwd": str(work)})
+    )
+    assert "exit code" not in result, result
+    assert work.name in result, result
+
+
+def test_policy_denies_cwd_escape() -> None:
+    from forchat.policy import Policy
+
+    root = tmpdir()
+    policy = Policy(root)
+    denied = policy.check("run_python", json.dumps({"script": "x.py", "cwd": "../"}))
+    assert denied and "工作目录越界" in denied, denied
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -1003,6 +1030,8 @@ def main() -> int:
         ("护栏拦截越界写入", test_policy_blocks_write_file_escape),
         ("wait_workers 汇合并行分支", test_wait_workers_joins_async_branches),
         ("总预算闸", test_total_budget_caps_whole_run),
+        ("run_python 支持 cwd", test_run_python_cwd),
+        ("护栏拒绝 cwd 越界", test_policy_denies_cwd_escape),
     ]
     failed = 0
     for name, fn in checks:

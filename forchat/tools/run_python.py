@@ -5,9 +5,9 @@
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
+from pathlib import Path
 
 from ..registry import tool
 
@@ -17,20 +17,28 @@ MAX_OUTPUT = 8000     # 字符，防止一次把上下文灌爆
 
 @tool(
     description="用当前 Python 解释器执行一个本地 .py 脚本，返回 stdout/stderr。"
-                "技能目录下 scripts/ 里的脚本用它来跑，例如依赖图分析。",
+                "技能脚本、项目自测都走它。",
     params={
-        "script": "脚本路径，相对当前工作目录，例如 skills/code-graph/scripts/graph.py",
+        "script": "脚本路径；相对路径按 cwd 解析，例如 skills/code-graph/scripts/graph.py",
         "args": "传给脚本的参数，空格分隔，可为空，例如 \". --max-nodes=20\"",
+        "cwd": "在哪个目录执行（worktree 内跑测试时用），默认当前目录",
     },
 )
-def run_python(script: str, args: str = "") -> str:
-    if not os.path.isfile(script):
-        return f"错误：脚本不存在 -> {script}（当前目录 {os.getcwd()}）"
+def run_python(script: str, args: str = "", cwd: str = "") -> str:
+    work_dir = Path(cwd).resolve() if cwd else Path.cwd()
+    if not work_dir.is_dir():
+        return f"错误：目录不存在 -> {work_dir}"
 
-    cmd = [sys.executable, script, *[item for item in args.split() if item]]
+    target = Path(script)
+    resolved = target if target.is_absolute() else (work_dir / target)
+    if not resolved.is_file():
+        return f"错误：脚本不存在 -> {resolved}（cwd={work_dir}）"
+
+    cmd = [sys.executable, str(resolved), *[item for item in args.split() if item]]
     try:
         proc = subprocess.run(
             cmd,
+            cwd=work_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -40,7 +48,7 @@ def run_python(script: str, args: str = "") -> str:
     except subprocess.TimeoutExpired:
         return f"错误：执行超时（>{TIMEOUT}s），可能是脚本在等输入或死循环"
     except OSError as exc:
-        return f"错误：无法执行 {script}: {exc}"
+        return f"错误：无法执行 {resolved}: {exc}"
 
     out = proc.stdout or ""
     if proc.stderr:

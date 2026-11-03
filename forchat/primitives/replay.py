@@ -78,6 +78,21 @@ class Replay:
             f"合计: workers={len(workers)} tokens={total_tokens} "
             f"seconds={total_seconds:.1f} {detail}".rstrip()
         )
+
+        finished = self.log.query(type="run_finished")
+        if finished:
+            event = finished[-1]
+            limit = event.get("budget_limit")
+            used = event.get("total_tokens", total_tokens)
+            if limit:
+                lines.append(
+                    f"运行: status={event.get('status')} tokens={used}/{limit} "
+                    f"({used / limit:.0%}) 用时={event.get('elapsed')}s"
+                )
+            else:
+                lines.append(
+                    f"运行: status={event.get('status')} tokens={used} 用时={event.get('elapsed')}s"
+                )
         return "\n".join(lines)
 
     def tree(self) -> str:
