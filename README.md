@@ -517,7 +517,9 @@ python -m forchat --serve 8000
 | `POST /runs` | `{"workflow": "minimal", "goal": "..."}` → `202 {"id", "run_dir"}` |
 | `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告、卡死 worker（`stuck`） |
 | `GET /runs/<id>/graph` | **运行图**：`{"nodes":[{id,template,depth,status,task,summary,tokens}], "edges":[{from,to}]}`，前端画网状结构用 |
-| `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
+| `GET /runs/<id>/events` | **SSE**：推送事件（带 `id:`），支持 `Last-Event-ID` / `?since=` 断点续传，结束发 `[DONE]` |
+| `GET /runs/<id>/artifacts` | 列出附件（name/size/mtime） |
+| `GET /runs/<id>/artifacts/<name>` | 下载附件（路径做了越界检查） |
 | `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本/卡死 worker（带 `FORCHAT_METRICS_TTL` 缓存，默认 5s） |
 | `POST /runs/<id>/stop` | 请求停止该运行里所有在跑的 worker（协作式） |
 | `POST /runs/<id>/workers/<wid>/stop` | 宿主强停单个 worker（下一个分片/轮次边界退出，记 killed） |

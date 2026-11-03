@@ -332,6 +332,68 @@ def test_summary_cached_by_signature() -> None:
     assert third is not first, "事件文件变化后应当重读"
 
 
+def test_artifacts_list_and_download() -> None:
+    """artifacts 列表与下载端点。"""
+    base = tmpdir()
+    run_dir = base / ".runs" / "art-run"
+    (run_dir / "artifacts").mkdir(parents=True)
+    (run_dir / "events.jsonl").write_text(
+        '{"type": "run_finished", "status": "done"}\n', encoding="utf-8"
+    )
+    (run_dir / "artifacts" / "note.txt").write_text("交付内容", encoding="utf-8")
+
+    manager = _manager(base)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(manager))
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/runs/art-run/artifacts", timeout=5
+        ) as resp:
+            listing = json.loads(resp.read())
+        assert listing["artifacts"][0]["name"] == "note.txt"
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/runs/art-run/artifacts/note.txt", timeout=5
+        ) as resp:
+            assert resp.read().decode("utf-8") == "交付内容"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_sse_last_event_id_resume() -> None:
+    """SSE 断点续传：带 Last-Event-ID 时跳过已收到的事件。"""
+    base = tmpdir()
+    run_dir = base / ".runs" / "sse-run"
+    run_dir.mkdir(parents=True)
+    lines = [
+        json.dumps({"type": "worker_created", "ts": 1.0, "worker_id": "w1"}),
+        json.dumps({"type": "worker_done", "ts": 2.0, "worker_id": "w1", "status": "done"}),
+        json.dumps({"type": "run_finished", "ts": 3.0, "status": "done"}),
+    ]
+    (run_dir / "events.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    manager = _manager(base)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(manager))
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/runs/sse-run/events",
+            headers={"Last-Event-ID": "1.5"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as resp:
+            body = resp.read().decode("utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert "worker_created" not in body
+    assert "worker_done" in body and "run_finished" in body
+    assert "id: 2.0" in body
+
+
 def main() -> int:
     checks = [
         ("manager 启停与状态", test_manager_start_and_status),
@@ -343,6 +405,8 @@ def main() -> int:
         ("服务端加载价目表", test_local_pricing_applied),
         ("metrics 有缓存", test_metrics_cached),
         ("状态摘要签名缓存", test_summary_cached_by_signature),
+        ("artifacts 列表与下载", test_artifacts_list_and_download),
+        ("SSE Last-Event-ID 续传", test_sse_last_event_id_resume),
         ("worker 强停与替换", test_worker_force_stop_and_replace),
         ("SSE 读取滚动分段", test_sse_reads_rotated_segments),
     ]

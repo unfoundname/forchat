@@ -51,7 +51,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 115 条用例（CI 用这个）
+pytest -q                    # 117 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -64,7 +64,7 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_tools.py`：18 条（registry/provider/重试/成本/read/edit/grep/glob/web_fetch/run_checks）
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
 - `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
-- `tests/test_server.py`：11 条（HTTP / SSE 分段 / metrics 缓存/卡死计数 / 摘要签名缓存 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
+- `tests/test_server.py`：13 条（HTTP / SSE 分段+断点续传 / metrics 缓存/卡死计数 / 摘要签名缓存 / artifacts 列表+下载 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
 - `tests/test_stream.py`：3 条（请求级子进程 / 超时硬杀 / 取消硬杀）
 - `tests/test_web.py`：3 条（web_search 后端 / 视觉标记转多模态）
 - `tests/test_subproc.py`：5 条（超时 / 脱敏环境 / 内存上限 / 取消 kill 工具子进程 / force_stop 联动）
