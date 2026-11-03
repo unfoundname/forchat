@@ -24,6 +24,8 @@ STEPS = [
     ("CLI 自检", [sys.executable, "tests/test_cli.py"]),
     ("HTTP/SSE 自检", [sys.executable, "tests/test_server.py"]),
     ("受限子进程自检", [sys.executable, "tests/test_subproc.py"]),
+    ("请求级子进程自检", [sys.executable, "tests/test_stream.py"]),
+    ("web_search/视觉自检", [sys.executable, "tests/test_web.py"]),
     ("分层校验", [sys.executable, "tests/test_layering.py"]),
     ("端到端 demo", [sys.executable, "examples/run_demo.py"]),
     ("MCP 自检", [sys.executable, "examples/smoke_mcp.py"]),

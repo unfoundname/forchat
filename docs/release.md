@@ -21,7 +21,7 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 |---|---|
 | 执行 | `spawn`（含 `paths` 授权）、`restart`（worker 自重启：同实例、清空对话、事实保留）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
 | 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限；**预算只记账不中断**（超了继续跑，整轮超了只拦新派生） |
-| 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（环境变量白名单）`web_fetch`（SSRF 防护）`run_checks`（机器可判验收）+ MCP 工具 |
+| 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（子命令白名单）`web_fetch`（SSRF 防护）`web_search`（可配置后端）`screenshot`（视觉）`run_checks`（机器可判验收）+ MCP 工具 |
 | 记忆 | 契约冻结（`write_contract` 写一次不可改，注入所有 agent、compact 不丢）；每 worker 一份事实库：`write_fact` / `read_facts`，落盘 `facts/<worker>.json`（可用 `FORCHAT_FACTS_DIR` 指到长期目录）；restart 沿用、新 agent 系统提示自动带 |
 | 记录 | append-only 事件流（跨进程文件锁、分段、关键事件 fsync）、`Replay.review/tree/summary/graph`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
@@ -51,7 +51,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 103 条用例（CI 用这个）
+pytest -q                    # 109 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -65,6 +65,8 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
 - `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
 - `tests/test_server.py`：10 条（HTTP / SSE 分段 / metrics 缓存/卡死计数 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
+- `tests/test_stream.py`：3 条（请求级子进程 / 超时硬杀 / 取消硬杀）
+- `tests/test_web.py`：3 条（web_search 后端 / 视觉标记转多模态）
 - `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

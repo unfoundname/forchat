@@ -1,10 +1,13 @@
 """WorkerMixin：单个 worker 的会话循环（唯一执行循环）、流式解析、收尾与 hook。"""
 from __future__ import annotations
 
+import base64
 import json
 import os
+import re
 import threading
 import time
+from pathlib import Path
 
 from . import hooks as hooks_mod
 from .hooks import HookContext
@@ -13,6 +16,26 @@ from .workflow import WorkerTemplate
 
 
 class WorkerMixin:
+
+    @staticmethod
+    def _image_message(result: str) -> dict | None:
+        """把 @@IMAGE:path@@ 工具回执转成多模态 user 消息（OpenAI image_url 格式）。"""
+        if os.environ.get("FORCHAT_VISION") != "1" or "@@IMAGE:" not in result:
+            return None
+        match = re.search(r"@@IMAGE:(.+?)@@", result)
+        if not match:
+            return None
+        path = Path(match.group(1))
+        if not path.is_file():
+            return None
+        data = base64.b64encode(path.read_bytes()).decode("ascii")
+        return {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"（截图 {path.name}）"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}"}},
+            ],
+        }
 
     def _trim_context(self, worker: WorkerInstance, messages: list[dict]) -> None:
         """上下文管理：超长时保留 system + 任务 + 最近轮次，砍掉中间历史。
@@ -247,6 +270,12 @@ class WorkerMixin:
                 text, calls, usage = self._stream_round(worker, tpl, messages, rnd)
             except Exception as exc:                     # noqa: BLE001
                 # 模型/网络层炸了：只让这一个 worker 失败，不掀翻整次运行
+                stop_event = self._stop_events.get(worker.id)
+                if stop_event is not None and stop_event.is_set():
+                    reason = "stopped"                  # 子进程被 kill（硬中断）
+                    self.log.append("worker_hard_stopped", worker_id=worker.id,
+                                    detail=f"{type(exc).__name__}: {exc}")
+                    break
                 reason = "error"
                 self.log.append("worker_error", worker_id=worker.id,
                                 error=f"{type(exc).__name__}: {exc}")
@@ -295,6 +324,9 @@ class WorkerMixin:
                                     error=f"{type(exc).__name__}: {exc}")
                     result = f"错误：{type(exc).__name__}: {exc}"
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
+                image = self._image_message(result)
+                if image is not None:
+                    messages.append(image)
 
             self._save_worker_state(worker, messages, rnd, reported)
             if worker.restart_requested:
@@ -365,7 +397,13 @@ class WorkerMixin:
 
         stop_event = self._stop_events.setdefault(worker.id, threading.Event())
 
-        for chunk in self.provider.stream(self.model, messages, self._tool_specs(tpl)):
+        if self.stream_factory is not None:
+            # 请求级子进程：cancel/超时时 factory 直接 kill 子进程
+            stream = self.stream_factory(messages, self._tool_specs(tpl), stop_event)
+        else:
+            stream = self.provider.stream(self.model, messages, self._tool_specs(tpl))
+
+        for chunk in stream:
             self._beat(worker.id)
             if stop_event.is_set():
                 # 协作式取消：只能做到"下一个分片到达时停"，在途网络请求没法硬杀

@@ -40,10 +40,13 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         pricing: Any | None = None,
         facts_dir: Path | str | None = None,
         compact_summarizer: Callable[[list[dict]], str] | None = None,
+        stream_factory: Callable[..., Any] | None = None,
     ) -> None:
         self.wf = workflow
         self.provider = provider
         self.model = model
+        # 可选的请求执行器：把模型调用放进子进程（真正可 kill）；None = 进程内
+        self.stream_factory = stream_factory
         # compact 摘要器：默认用 provider 自己调一次模型；测试/宿主可注入替换
         self.compact_summarizer = compact_summarizer
         # 每个 worker 一份事实文件；默认落在 run 目录，可用 FORCHAT_FACTS_DIR 指到长期存储

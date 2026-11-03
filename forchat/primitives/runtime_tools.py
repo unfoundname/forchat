@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -64,8 +66,20 @@ class ToolsMixin:
             result = self.external[name][1](call["arguments"] or "{}")
         else:
             result = handler(worker, tpl, args)
+        result = self._normalize_image_result(result)
         self.log.append("tool_result", worker_id=worker.id, tool=name, result=result[:500])
         return result
+
+    @staticmethod
+    def _normalize_image_result(result: str) -> str:
+        """视觉未开启时，把截图标记换成可读文本，别把裸标记喂给模型。"""
+        if "@@IMAGE:" not in result:
+            return result
+        match = re.search(r"@@IMAGE:(.+?)@@", result)
+        path = match.group(1) if match else ""
+        if os.environ.get("FORCHAT_VISION") == "1":
+            return result
+        return f"截图已保存：{path}（视觉未开启；设 FORCHAT_VISION=1 让模型看到图片）"
     def _tool_spawn(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         template = str(args.get("template", ""))
         task = str(args.get("task", ""))

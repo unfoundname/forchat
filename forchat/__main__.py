@@ -155,7 +155,17 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         guard=Policy(Path.cwd()).check,
         pricing=pricing if pricing.known() else None,
         facts_dir=os.environ.get("FORCHAT_FACTS_DIR") or None,
+        stream_factory=_stream_factory(),
     )
+
+
+def _stream_factory():
+    """FORCHAT_HARD_KILL=1 时把模型请求放进子进程，stop 可以真正 kill。"""
+    if os.environ.get("FORCHAT_HARD_KILL") != "1":
+        return None
+    from .stream_exec import ProcessStreamFactory
+
+    return ProcessStreamFactory(model=os.environ.get("FORCHAT_MODEL", "fake"))
 
 
 def _execute(

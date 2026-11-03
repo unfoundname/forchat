@@ -80,6 +80,8 @@ python tests/run_all.py            # 全部本地检查（全部测试文件 + �
 pytest -q                          # 同一批用例走 pytest（CI 用的就是这个）
 python tests/test_primitives.py    # 原语：预算/配置校验
 python tests/test_primitives_flows.py   # 原语：派生/hook/并发
+python tests/test_stream.py             # 请求级子进程硬中断
+python tests/test_web.py                # web_search/视觉标记
 python tests/test_primitives_resources.py   # 原语：上下文裁剪/资源感知/排队
 python tests/test_primitives_lifecycle.py   # 原语：restart/事实
 python tests/test_primitives_state.py   # 原语：状态/续跑/运行图
@@ -203,6 +205,8 @@ agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许�
 - `write_file`：把内容真正落盘（路径安全由 policy 统一拦，覆盖前自动备份）；
 - `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell；
 - `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；默认拒绝内网地址（SSRF），限时 20s、限读 500KB；
+- `web_search`：联网搜索（需配置 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY`，DeepSeek 的搜索接口可直接填）；
+- `screenshot`：抓屏存 PNG；`FORCHAT_VISION=1` 时运行时把它转成 `image_url` 多模态消息（网关需支持视觉）；
 - `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述。
 
 在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
@@ -358,8 +362,10 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
   append 时对 `events.lock` 加**跨进程文件锁**，两个进程写同一个 run 目录不会互相插行；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
 - **只有墙钟到期才中断 worker**（`run_expired`）；token/成本超预算只记账，兄弟分支照常跑完；
-- **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`
-  （不会硬杀线程；在途网络请求也不会立刻断）；
+- **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`；
+- **硬中断（可选）**：`FORCHAT_HARD_KILL=1` 把模型流式请求放进子进程；stop / 取消 / 分片超时
+  （`FORCHAT_CHUNK_TIMEOUT`，默认 300s）时直接 `kill` 子进程——挂死的网络请求不会再拖住线程。
+  工具本身有超时；真正无法硬杀的是同进程里的纯 Python 死循环（那种用墙钟兜底）。
 - 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。
 
 provider 的两个硬参数（真模型）：
