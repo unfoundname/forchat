@@ -227,8 +227,10 @@ agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许�
   锁是建议锁：`run_python` 里的脚本不会自动遵守；
 - `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell；
 - `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；SSRF 防护含**重定向逐跳校验**，十进制/八进制/十六进制 IP、IPv6/映射地址、localhost 变体都归一化拦截；限时 20s、限读 500KB；
-- `web_search`：联网搜索（需配置 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY`，DeepSeek 的搜索接口可直接填）；
-- `screenshot`：抓屏存 PNG；`FORCHAT_VISION=1` 时运行时把它转成 `image_url` 多模态消息（网关需支持视觉）；
+- `web_search`：联网搜索，**默认走 DeepSeek Search API**（`POST /v1/tools/search`，key 取 `DEEPSEEK_API_KEY`）；
+  也可用 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY` 指向别的兼容后端；
+- `screenshot`：抓屏存 PNG；`FORCHAT_VISION=1` 时运行时把它转成 `image_url` 多模态消息
+  （`deepseek-flash` 原生支持 OpenAI 兼容的 image_url，已用真模型验证）；
 - `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述；
   workflow 模板写 `"require_checks": true` 后，没跑检查/检查失败时 `report` 会被直接拒绝。
 

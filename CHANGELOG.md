@@ -19,6 +19,10 @@
 - 卡死看门狗（`FORCHAT_STUCK_SECONDS` / `FORCHAT_STUCK_ACTION`）；metrics 增加状态计数与预算硬停计数。
 - 事件流分文件：工具全文进 `tools.jsonl`，thinking 整轮合并；`tools.jsonl` 也滚动。
 
+### 模型能力
+- `web_search` 默认接入 DeepSeek Search API（`/v1/tools/search`，`DEEPSEEK_API_KEY`）。
+- `deepseek-flash` 视觉链路真模型验证：`image_url` data URL → 读图正确（生成 "42" 的 PNG）。
+
 ### 安全
 - SSRF 防护升级：重定向逐跳校验，十进制/八进制/十六进制 IP、IPv6/映射地址归一化拦截。
 - `run_checks` 接 report 门禁（`require_checks`）；截断的工具调用不再执行。

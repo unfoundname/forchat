@@ -15,14 +15,24 @@ from _support import run
 from forchat import registry, tools  # noqa: F401
 
 
+def _without_keys(*names):
+    saved = {name: os.environ.pop(name, None) for name in names}
+    return saved
+
+
+def _restore_keys(saved) -> None:
+    for name, value in saved.items():
+        if value is not None:
+            os.environ[name] = value
+
+
 def test_search_requires_config() -> None:
-    old = os.environ.pop("FORCHAT_SEARCH_URL", None)
+    saved = _without_keys("FORCHAT_SEARCH_URL", "FORCHAT_SEARCH_KEY", "DEEPSEEK_API_KEY")
     try:
         out = registry.execute("web_search", json.dumps({"query": "x"}))
     finally:
-        if old is not None:
-            os.environ["FORCHAT_SEARCH_URL"] = old
-    assert "未配置搜索后端" in out, out
+        _restore_keys(saved)
+    assert "未配置搜索 key" in out, out
 
 
 def test_search_backend_returns_results() -> None:
@@ -48,21 +58,61 @@ def test_search_backend_returns_results() -> None:
 
     server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    old = os.environ.get("FORCHAT_SEARCH_URL")
+    saved = _without_keys("FORCHAT_SEARCH_URL", "FORCHAT_SEARCH_KEY")
     os.environ["FORCHAT_SEARCH_URL"] = f"http://127.0.0.1:{server.server_address[1]}/search"
+    os.environ["FORCHAT_SEARCH_KEY"] = "test-key"
     try:
         out = registry.execute("web_search", json.dumps({"query": "deepseek"}))
     finally:
         server.shutdown()
         server.server_close()
-        if old is None:
-            os.environ.pop("FORCHAT_SEARCH_URL", None)
-        else:
-            os.environ["FORCHAT_SEARCH_URL"] = old
+        _restore_keys(saved)
 
     assert "结果-deepseek" in out, out
     assert "https://example.com/a" in out, out
     assert "摘要内容" in out, out
+
+
+def test_search_deepseek_schema() -> None:
+    """DeepSeek Search API 的形状：count 字段 + results[].summary。"""
+    seen: dict = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            seen.update(body)
+            payload = json.dumps(
+                {"results": [{
+                    "title": "DeepSeek V4",
+                    "url": "https://example.com/v4",
+                    "summary": "官方发布的版本摘要",
+                }]},
+                ensure_ascii=False,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    saved = _without_keys("FORCHAT_SEARCH_URL", "FORCHAT_SEARCH_KEY")
+    os.environ["FORCHAT_SEARCH_URL"] = f"http://127.0.0.1:{server.server_address[1]}/search"
+    os.environ["FORCHAT_SEARCH_KEY"] = "test-key"
+    try:
+        out = registry.execute("web_search", json.dumps({"query": "deepseek", "max_results": 2}))
+    finally:
+        server.shutdown()
+        server.server_close()
+        _restore_keys(saved)
+
+    assert seen["count"] == 2, seen
+    assert "官方发布的版本摘要" in out, out
 
 
 def test_screenshot_marker_to_image_message() -> None:
@@ -169,6 +219,7 @@ def main() -> int:
     checks = [
         ("未配置时报错", test_search_requires_config),
         ("搜索后端返回结果", test_search_backend_returns_results),
+        ("DeepSeek 搜索 schema", test_search_deepseek_schema),
         ("截图标记转多模态消息", test_screenshot_marker_to_image_message),
         ("SSRF-数字写法", test_ssrf_numeric_encodings),
         ("SSRF-IPv6", test_ssrf_ipv6_forms),
