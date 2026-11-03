@@ -4,8 +4,8 @@
 并把常见的编码/权限错误变成可读回执。
 
 覆盖已有文件前会自动备份到 `.forchat-backups/<相对路径>`；
-写入用"临时文件 + os.replace"保证原子性；可选 `expected_sha256` / `expected_mtime`
-做乐观并发校验（文件被别人改过就拒绝，让模型先重读）。
+写入用"临时文件 + os.replace"保证原子性；整段持有**按路径的写锁**（跨进程排队）；
+可选 `expected_sha256` / `expected_mtime` 做乐观并发校验（文件被别人改过就拒绝）。
 """
 from __future__ import annotations
 
@@ -13,10 +13,11 @@ from pathlib import Path
 
 from ..registry import tool
 from ._files import check_expected, file_digest, write_text
+from ._locks import LockTimeout, path_lock
 
 
 @tool(
-    description="写入文本文件（覆盖或新建）。原子写 + 覆盖前自动备份；"
+    description="写入文本文件（覆盖或新建）。原子写 + 覆盖前自动备份；写入期间对路径加锁，"
                 "可带 expected_sha256/expected_mtime 做乐观并发校验（不匹配就拒绝）。"
                 "小改动请优先用 edit_file。",
     params={
@@ -33,14 +34,19 @@ def write_file(
     expected_mtime: float = 0.0,
 ) -> str:
     target = Path(path)
-    problem = check_expected(target, expected_sha256, expected_mtime)
-    if problem:
-        return problem
     try:
-        backup = write_text(target, content)
-    except IsADirectoryError:
-        return f"错误：{path} 是目录"
-    except OSError as exc:
-        return f"错误：写入失败 {path}: {exc}"
+        with path_lock(target):
+            problem = check_expected(target, expected_sha256, expected_mtime)
+            if problem:
+                return problem
+            try:
+                backup = write_text(target, content)
+            except IsADirectoryError:
+                return f"错误：{path} 是目录"
+            except OSError as exc:
+                return f"错误：写入失败 {path}: {exc}"
+            digest = file_digest(target)
+    except LockTimeout as exc:
+        return f"错误：文件正被其他 worker 写入，请稍后重试（{exc}）"
     note = f"（旧内容已备份到 {backup}）" if backup else ""
-    return f"已写入 {path}（{len(content)} 字符，sha256={file_digest(target)}）{note}"
+    return f"已写入 {path}（{len(content)} 字符，sha256={digest}）{note}"

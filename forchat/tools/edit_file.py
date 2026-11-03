@@ -1,6 +1,7 @@
 """edit_file：精确替换，不重写整个文件（省 token、少误伤）。
 
-替换后原子写回；可选 `expected_sha256` / `expected_mtime` 做乐观并发校验。
+整段持有按路径的写锁（跨进程排队），替换后原子写回；
+可选 `expected_sha256` / `expected_mtime` 做乐观并发校验。
 """
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ from pathlib import Path
 
 from ..registry import tool
 from ._files import check_expected, file_digest, write_text
+from ._locks import LockTimeout, path_lock
 
 
 @tool(
@@ -36,27 +38,33 @@ def edit_file(
     if not old_string:
         return "错误：old_string 不能为空"
 
-    problem = check_expected(target, expected_sha256, expected_mtime)
-    if problem:
-        return problem
-
-    text = target.read_text(encoding="utf-8", errors="replace")
-    count = text.count(old_string)
-    if count == 0:
-        return f"错误：在 {path} 里没找到 old_string（注意缩进与换行要完全一致）"
-    if count > 1 and not replace_all:
-        return (
-            f"错误：old_string 在 {path} 里出现了 {count} 次，"
-            "请提供更长的上下文，或设 replace_all=true"
-        )
-
-    new_text = text.replace(old_string, new_string) if replace_all else text.replace(
-        old_string, new_string, 1
-    )
     try:
-        backup = write_text(target, new_text)
-    except OSError as exc:
-        return f"错误：写入失败 {path}: {exc}"
+        with path_lock(target):
+            problem = check_expected(target, expected_sha256, expected_mtime)
+            if problem:
+                return problem
+
+            text = target.read_text(encoding="utf-8", errors="replace")
+            count = text.count(old_string)
+            if count == 0:
+                return f"错误：在 {path} 里没找到 old_string（注意缩进与换行要完全一致）"
+            if count > 1 and not replace_all:
+                return (
+                    f"错误：old_string 在 {path} 里出现了 {count} 次，"
+                    "请提供更长的上下文，或设 replace_all=true"
+                )
+
+            new_text = text.replace(old_string, new_string) if replace_all else text.replace(
+                old_string, new_string, 1
+            )
+            try:
+                backup = write_text(target, new_text)
+            except OSError as exc:
+                return f"错误：写入失败 {path}: {exc}"
+            digest = file_digest(target)
+    except LockTimeout as exc:
+        return f"错误：文件正被其他 worker 写入，请稍后重试（{exc}）"
+
     note = f"（旧内容已备份到 {backup}）" if backup else ""
     return (f"已编辑 {path}（替换 {count if replace_all else 1} 处，"
-            f"{len(new_text) - len(text):+d} 字符，sha256={file_digest(target)}）{note}")
+            f"{len(new_text) - len(text):+d} 字符，sha256={digest}）{note}")

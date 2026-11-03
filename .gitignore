@@ -10,6 +10,7 @@ venv/
 node_modules/
 .worktrees/
 .forchat-backups/
+.forchat-locks/
 pricing.json
 *.egg-info/
 build/
