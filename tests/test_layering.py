@@ -1,8 +1,9 @@
-"""机械校验架构约束（AGENTS.md 的三条硬规则里可自动化的两条半）：
+"""机械校验架构约束（AGENTS.md 的硬规则里可自动化的部分）：
 
 1. 依赖只能向下：primitives 只许 import 标准库和自身；providers 同理。
 2. primitives 里不许出现领域词（B 站、视频、商品…）。
-3. 同一能力不许二次实现：核心循环只允许出现在 primitives/runtime.py。
+3. 同一能力不许二次实现：核心循环只允许出现在 primitives/runtime_worker.py。
+4. 单文件不许超过 500 行（超过就拆，拆不动说明职责没切开）。
 
     python tests/test_layering.py
 """
@@ -22,7 +23,8 @@ LAYERS = {
 
 DOMAIN_WORDS = {"bilibili", "B站", "哔哩", "视频", "弹幕", "视频流", "淘宝", "商品", "小红书"}
 
-LOOP_OWNER = "forchat/primitives/runtime.py"
+LOOP_OWNER = "forchat/primitives/runtime_worker.py"
+MAX_LINES = 500
 # 执行循环的"指纹"：同时出现 tool_calls 累积（setdefault）和 finish_reason 处理，才算循环
 LOOP_MARKERS = {"setdefault", "finish_reason"}
 
@@ -79,14 +81,34 @@ def check_single_loop() -> list[str]:
     return problems
 
 
+def check_file_length() -> list[str]:
+    """单文件超过 500 行就拆：这是可维护性的硬闸，不是建议。"""
+    problems: list[str] = []
+    for path in sorted(ROOT.rglob("*.py")):
+        parts = set(path.parts)
+        if parts & {"__pycache__", ".runs", ".worktrees", ".venv"}:
+            continue
+        lines = len(path.read_text(encoding="utf-8").splitlines())
+        if lines > MAX_LINES:
+            problems.append(
+                f"{path.relative_to(ROOT)} 有 {lines} 行，超过单文件上限 {MAX_LINES} 行"
+            )
+    return problems
+
+
 def main() -> int:
-    problems = check_direction() + check_domain_words() + check_single_loop()
+    problems = (
+        check_direction()
+        + check_domain_words()
+        + check_single_loop()
+        + check_file_length()
+    )
     if problems:
         print("分层校验失败：")
         for item in problems:
             print("  -", item)
         return 1
-    print("分层校验通过：依赖方向、领域词隔离、唯一执行循环")
+    print("分层校验通过：依赖方向、领域词隔离、唯一执行循环、单文件 ≤ 500 行")
     return 0
 
 

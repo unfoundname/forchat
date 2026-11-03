@@ -21,7 +21,12 @@ ForChat/
 │   │   ├── scheduler.py        并发准入（等待型子 worker 内联，避免死锁）
 │   │   ├── hooks.py            action / spawn 两类 hook
 │   │   ├── workflow.py         workflow.json 严格加载与校验
-│   │   ├── runtime.py          ★ Runtime：spawn / report / read_state / write_note
+│   │   ├── runtime.py          ★ Runtime：装配与调度（mixin 组合）
+│   │   ├── runtime_worker.py   执行循环（唯一一份）+ 流式解析 + 收尾
+│   │   ├── runtime_tools.py    工具分发与运行时工具实现
+│   │   ├── runtime_state.py    续跑恢复 / plan / 执行快照 / metrics
+│   │   ├── runtime_prompt.py   初始消息与兜底报告
+│   │   ├── runtime_specs.py    运行时工具 schema
 │   │   └── replay.py           review（人读）/ tree / tool_calls
 │   ├── providers/              base(Protocol) · fake(离线) · retry(瞬时重试) · deepseek(唯一用 SDK)
 │   ├── tools/                  能力工具：read / list_dir / run_python / write_file / git
@@ -40,13 +45,19 @@ ForChat/
 │   ├── run_demo.py             端到端自检（假 provider，无需 key）
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
-├── tests/
-│   ├── run_all.py              一条命令跑全部本地检查（三个测试文件 + demo + MCP）
+├── tests/                     全部文件 ≤500 行
+│   ├── run_all.py              一条命令跑全部本地检查
 │   ├── _support.py             共享夹具：MINIMAL、tmpdir、用例执行器
-│   ├── test_primitives.py      原语：预算/围栏/事件流/续跑/并发/报告（34 条）
-│   ├── test_tools.py           工具与安全：policy/provider/registry 工具（10 条）
-│   ├── test_cli.py             CLI：--check 退出码（1 条）
-│   └── test_layering.py        依赖方向 / 领域词 / 唯一执行循环
+│   ├── test_primitives.py      原语：预算/配置校验（11 条）
+│   ├── test_primitives_flows.py    原语：派生/hook/并发（13 条）
+│   ├── test_primitives_state.py    原语：状态/续跑/预算闸（9 条）
+│   ├── test_primitives_guards.py   原语：scope/停止/快照/重试（8 条）
+│   ├── test_tools.py           工具：registry/provider/重试/成本（12 条）
+│   ├── test_policy.py          安全：policy/scope/脱敏/备份（8 条）
+│   ├── test_cli.py             CLI：--check/--inspect/--runs/--prune（6 条）
+│   ├── test_server.py          HTTP/SSE/metrics/鉴权/限流/停止（5 条）
+│   ├── test_subproc.py         受限子进程：超时/脱敏/内存上限（3 条）
+│   └── test_layering.py        依赖方向 / 领域词 / 唯一循环 / 单文件 ≤500 行
 ├── skills/                     技能目录（数据）
 └── mcp_servers.json            MCP 服务端配置
 ```
@@ -63,12 +74,16 @@ pip install -e ".[llm]"     # 接真模型：装 openai
 ## 跑起来（不需要 key）
 
 ```powershell
-python tests/run_all.py            # 全部本地检查（六个测试文件 + 分层 + demo + MCP，推荐）
+python tests/run_all.py            # 全部本地检查（全部测试文件 + 分层 + demo + MCP，推荐）
 pytest -q                          # 同一批用例走 pytest（CI 用的就是这个）
-python tests/test_primitives.py    # 原语：预算/围栏/事件流/续跑/并发
-python tests/test_tools.py         # 工具与安全：policy / provider / registry
-python tests/test_cli.py           # CLI：--check 退出码
-python tests/test_server.py        # HTTP/SSE：端点、鉴权、限流、停止
+python tests/test_primitives.py    # 原语：预算/配置校验
+python tests/test_primitives_flows.py   # 原语：派生/hook/并发
+python tests/test_primitives_state.py   # 原语：状态/续跑/预算闸
+python tests/test_primitives_guards.py  # 原语：scope/停止/快照/重试
+python tests/test_tools.py         # 工具：registry/provider/重试/成本
+python tests/test_policy.py        # 安全：policy/scope/脱敏/备份
+python tests/test_cli.py           # CLI：--check/--inspect/--runs/--prune
+python tests/test_server.py        # HTTP/SSE/metrics/鉴权/限流/停止
 python tests/test_subproc.py       # 受限子进程：超时/脱敏/内存上限
 python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
 ```
@@ -454,7 +469,7 @@ python -m forchat --resume-worker .runs/<run> n002-coder
 
 1. `CONTEXT.md` —— 先对齐词汇，三层不许混
 2. `forchat/primitives/types.py` —— WorkerInstance / Budget / Report
-3. `forchat/primitives/runtime.py` —— 唯一执行循环：spawn / hook / report
+3. `forchat/primitives/runtime_worker.py` —— 唯一执行循环：spawn / hook / report
 4. `forchat/primitives/workflow.py` —— 配置如何被严格校验
 5. `forchat/primitives/replay.py` —— 从事件流重建一次运行
 6. `examples/workflows/minimal/` —— 配置怎么拼出结构

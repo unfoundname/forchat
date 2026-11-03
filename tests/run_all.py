@@ -14,7 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = [
     ("原语自检", [sys.executable, "tests/test_primitives.py"]),
-    ("工具与安全自检", [sys.executable, "tests/test_tools.py"]),
+    ("原语流程自检", [sys.executable, "tests/test_primitives_flows.py"]),
+    ("原语状态/预算自检", [sys.executable, "tests/test_primitives_state.py"]),
+    ("原语围栏自检", [sys.executable, "tests/test_primitives_guards.py"]),
+    ("工具自检", [sys.executable, "tests/test_tools.py"]),
+    ("策略与安全自检", [sys.executable, "tests/test_policy.py"]),
     ("CLI 自检", [sys.executable, "tests/test_cli.py"]),
     ("HTTP/SSE 自检", [sys.executable, "tests/test_server.py"]),
     ("受限子进程自检", [sys.executable, "tests/test_subproc.py"]),

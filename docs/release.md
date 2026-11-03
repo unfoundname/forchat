@@ -54,12 +54,16 @@ pytest -q                    # 73 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
-- `tests/test_primitives.py`：41 条（预算/围栏/事件流滚动/续跑/中断/快照续跑/并发/报告/停止/成本/重试）
-- `tests/test_tools.py`：20 条（policy/scope/环境擦除/备份/provider/重试/工具/成本/超时）
+- `tests/test_primitives.py`：11 条（预算/配置校验）
+- `tests/test_primitives_flows.py`：13 条（派生/hook/并发）
+- `tests/test_primitives_state.py`：9 条（状态/续跑/预算闸）
+- `tests/test_primitives_guards.py`：8 条（scope/停止/快照/重试）
+- `tests/test_tools.py`：12 条（registry/provider/重试/成本）
+- `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
 - `tests/test_cli.py`：6 条（--check / --inspect / --runs / --prune）
 - `tests/test_server.py`：5 条（HTTP / SSE / metrics / 鉴权 / 限流 / 停止）
 - `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
-- `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环
+- `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 
 CI：`.github/workflows/ci.yml`（ubuntu + Python 3.12，pytest + 分层 + demo）。
 
