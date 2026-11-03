@@ -29,6 +29,7 @@ ForChat/
 │   ├── workflows/minimal/      最小 workflow 包（workflow.json + prompts/）
 │   ├── workflows/delivery/     交付示例：coder 落盘 → hook 派生 reviewer → root 用 git 核对
 │   ├── workflows/worktree/     worktree 并行示例：两个 coder 各建 worktree + 分支 + 提交
+│   ├── workflows/merge/        串行合并示例：把多个 feat 分支合进 integration 分支
 │   ├── run_demo.py             端到端自检（假 provider，无需 key）
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
@@ -174,6 +175,16 @@ provider 的两个硬参数（真模型）：
 - root 用 `git worktree list` + `git show --name-only` 核对隔离性，然后 report。
 
 真跑过一次：两个 coder 并行（`wait=false`）各自提交 `1fb13b4` / `42bf46b`，主工作区未被触碰。
+
+## 串行合并（示例）
+
+`examples/workflows/merge` 是接在 worktree 并行之后的一步：
+
+- 从干净的 master 建 `integration` 分支；
+- **一次只合一个**功能分支（`git merge feat-a --no-edit`、再 `git merge feat-b --no-edit`），让每次冲突单独可见；
+- 合完核对文件与 log 再 report；不碰 master、不 push，冲突则 `merge --abort` 并写进 `unresolved`。
+
+真跑过一次：`feat-a`、`feat-b` 依次合入 integration，两个 merge 提交（`6376851`、`665445a`），无冲突。
 
 ## 续跑
 

@@ -823,6 +823,9 @@ def test_git_tool_whitelist() -> None:
     denied = registry.execute("git", json.dumps({"args": "rm -rf ."}))
     assert "不在白名单" in denied, denied
 
+    merged = registry.execute("git", json.dumps({"args": "merge"}))
+    assert "不在白名单" not in merged, merged
+
     status = registry.execute("git", json.dumps({"args": "status --short"}))
     assert "不在白名单" not in status, status
 
