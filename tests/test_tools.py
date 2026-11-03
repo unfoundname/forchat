@@ -267,6 +267,14 @@ def test_policy_scope_enforced() -> None:
     )
     assert denied_git and "授权范围" in denied_git, denied_git
 
+    # --opt=value 形式的绕过也要被拦（例如 --git-dir=/tmp/x）
+    for sneaky in (
+        "status --git-dir=../outside",
+        "status --work-tree=/tmp/elsewhere",
+    ):
+        blocked = policy.check("git", json.dumps({"args": sneaky}), scope)
+        assert blocked, sneaky
+
 
 def main() -> int:
     checks = [

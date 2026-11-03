@@ -88,11 +88,17 @@ class Policy:
         return None
 
     def _check_git_paths(self, args: str, allowed_roots: list[Path]) -> str | None:
-        """git 的参数里如果出现"像路径"的词，它也必须落在授权范围内。"""
+        """git 的参数里如果出现"像路径"的词，它也必须落在授权范围内。
+
+        覆盖 `--git-dir=/x`、`--work-tree=/x` 这种 `--opt=value` 写法（否则是明显绕过口）。
+        """
         for token in args.split():
-            if not self._looks_like_path(token):
+            cleaned = token.replace('"', "").replace("'", "")
+            if cleaned.startswith("--") and "=" in cleaned:
+                cleaned = cleaned.split("=", 1)[1]
+            if not self._looks_like_path(cleaned):
                 continue
-            candidate = Path(token.replace('"', "").replace("'", "")).expanduser()
+            candidate = Path(cleaned).expanduser()
             resolved = candidate.resolve() if candidate.is_absolute() else (self.root / candidate).resolve()
             if not self._inside(resolved, self.root):
                 return f"git 路径越界：{resolved}"
