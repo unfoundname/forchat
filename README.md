@@ -219,6 +219,7 @@ worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，�
 就保留 `system + 原始任务 + 最近轮次`，**把中间历史 compact 掉**：
 
 1. 被裁掉的整段对话**归档**到 `compacted/<worker>-<序号>.json`（不丢，可查）；
+   默认全留（`FORCHAT_COMPACT_KEEP=0`），设成 N 就只留最近 N 份——留着做优化分析，还是省盘，你定；
 2. 在对话里插入一段**摘要**：默认调用模型总结（保留已确认事实/决策/未完成事项），
    模型调用失败或 `FORCHAT_COMPACT_LLM=0` 时退回确定性摘要（谁说了什么、调过哪些工具）；
 3. 最近对话保留 `FORCHAT_RECENT_MESSAGES` 条（默认 20，至少 4 条）；
@@ -348,8 +349,9 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
   用来兜住 provider 之外的基础设施抖动；业务失败不重试；
 - **事件流滚动**：单文件超过 `FORCHAT_EVENT_LOG_MB`（默认 32）滚成 `events.<n>.jsonl`，
   `read()` 按段拼回；`report`/`worker_done`/`run_finished` 额外 fsync，崩溃最多丢正在写的那一行；
+  append 时对 `events.lock` 加**跨进程文件锁**，两个进程写同一个 run 目录不会互相插行；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
-- 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完；
+- **只有墙钟到期才中断 worker**（`run_expired`）；token/成本超预算只记账，兄弟分支照常跑完；
 - **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`
   （不会硬杀线程；在途网络请求也不会立刻断）；
 - 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。
@@ -503,7 +505,7 @@ python -m forchat --serve 8000
 | `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告 |
 | `GET /runs/<id>/graph` | **运行图**：`{"nodes":[{id,template,depth,status,task,summary,tokens}], "edges":[{from,to}]}`，前端画网状结构用 |
 | `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
-| `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本 |
+| `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本（带 `FORCHAT_METRICS_TTL` 缓存，默认 5s） |
 | `POST /runs/<id>/stop` | 请求停止该运行里所有在跑的 worker（协作式） |
 
 鉴权与限流：

@@ -257,6 +257,25 @@ def test_sse_reads_rotated_segments() -> None:
     assert "[DONE]" in body
 
 
+def test_metrics_cached() -> None:
+    """metrics 带 TTL 缓存，scrape 不会每次重读全部事件。"""
+    base = tmpdir()
+    manager = RunManager(
+        runs_root=base / ".runs",
+        workflows_root=ROOT / "examples" / "workflows",
+        provider_factory=lambda: FakeProvider(_responder()),
+        metrics_ttl=999,
+    )
+    first = manager.metrics_text()
+    assert manager._metrics_cache is not None
+    second = manager.metrics_text()
+    assert second == first
+
+    manager.metrics_ttl = 0
+    manager.metrics_text()
+    assert manager._metrics_cache[0] >= 0
+
+
 def main() -> int:
     checks = [
         ("manager 启停与状态", test_manager_start_and_status),
@@ -266,6 +285,7 @@ def main() -> int:
         ("停止端点", test_stop_endpoint_stops_running_workers),
         ("运行结束释放内存", test_runtimes_are_released_after_run),
         ("服务端加载价目表", test_local_pricing_applied),
+        ("metrics 有缓存", test_metrics_cached),
         ("SSE 读取滚动分段", test_sse_reads_rotated_segments),
     ]
     return run("HTTP/SSE 自检", checks)

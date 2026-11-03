@@ -2,26 +2,54 @@
 
 一条事件 = 一个 dict，落成 JSONL（一行一条）。查、重放、复盘都读它，不读对话历史。
 
-三个工程约束：
+四个工程约束：
 
 1. **分段**：单文件超过 `FORCHAT_EVENT_LOG_MB`（默认 32）就滚动成 `events.<n>.jsonl`，
    长跑不会把内存和单文件一起撑爆；`read()` 按段顺序拼回来。
 2. **耐久**：每条都 flush；`report` / `worker_done` / `run_finished` 这类关键事件额外 fsync，
    崩溃时丢的只是"正在写的那一行"，不会丢状态。
 3. **线程安全**：并发 worker 同时 append 用锁串行化。
+4. **跨进程安全**：append 时对 `events.lock` 加 OS 文件锁（Windows `msvcrt` / POSIX `flock`），
+   两个进程写同一个 run 目录不会互相插行。
 """
 from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 # 这些事件出现后必须落盘（崩溃恢复依赖它们）
 DURABLE_TYPES = {"report", "worker_done", "run_finished", "run_budget_exhausted", "run_resumed"}
 SYNC_EVERY = 50
+
+
+def _lock_handle(handle: Any) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+
+
+def _unlock_handle(handle: Any) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 class EventLog:
@@ -39,15 +67,28 @@ class EventLog:
         event = {"type": type, "ts": time.time(), **fields}
         line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
         with self._lock:
-            self._maybe_rotate()
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(line)
-                handle.flush()
-                self._since_sync += 1
-                if type in DURABLE_TYPES or self._since_sync >= SYNC_EVERY:
-                    os.fsync(handle.fileno())
-                    self._since_sync = 0
+            # 跨进程文件锁：两个进程写同一个 run 目录时不会互相插行
+            with self._lock_file() as lock:
+                self._maybe_rotate()
+                with self.path.open("a", encoding="utf-8") as handle:
+                    handle.write(line)
+                    handle.flush()
+                    self._since_sync += 1
+                    if type in DURABLE_TYPES or self._since_sync >= SYNC_EVERY:
+                        os.fsync(handle.fileno())
+                        self._since_sync = 0
         return event
+
+    @contextmanager
+    def _lock_file(self):
+        lock_path = self.root / "events.lock"
+        lock_path.touch(exist_ok=True)
+        with lock_path.open("a+b") as handle:
+            _lock_handle(handle)
+            try:
+                yield
+            finally:
+                _unlock_handle(handle)
 
     def _segments(self) -> list[Path]:
         segs = sorted(

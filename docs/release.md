@@ -23,10 +23,10 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 | 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限；**预算只记账不中断**（超了继续跑，整轮超了只拦新派生） |
 | 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（子命令白名单）+ MCP 工具 |
 | 记忆 | 每 worker 一份事实库：`write_fact` / `read_facts`，落盘 `facts/<worker>.json`（可用 `FORCHAT_FACTS_DIR` 指到长期目录）；restart 沿用、新 agent 系统提示自动带 |
-| 记录 | append-only 事件流、`Replay.review/tree/summary/graph`、`--runs` / `--inspect` / `--resume` |
+| 记录 | append-only 事件流（跨进程文件锁、分段、关键事件 fsync）、`Replay.review/tree/summary/graph`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
 | 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、worker 级 `retries`、截断检测、预算熔断、续跑、中断 worker 可见、每轮快照续跑 |
-| 服务 | HTTP/SSE（`--serve`）：启动运行、查状态、订阅事件流、Bearer token、限流、停止；`/metrics` Prometheus 文本 |
+| 服务 | HTTP/SSE（`--serve`）：启动运行、查状态、订阅事件流、Bearer token、限流、停止；`/metrics` Prometheus 文本（TTL 缓存） |
 | 运维 | `--prune` 按最近 N 次/最老 N 天清理运行目录（默认 dry-run）；事件流分段滚动 + 关键事件 fsync |
 | 计费 | `pricing.json` 价目表 → `report.cost_usd` / `--inspect` 成本行；缺价目显示未知 |
 
@@ -51,20 +51,20 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 93 条用例（CI 用这个）
+pytest -q                    # 96 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
-- `tests/test_primitives.py`：11 条（预算/配置校验）
+- `tests/test_primitives.py`：12 条（预算/配置校验/跨进程事件流）
 - `tests/test_primitives_flows.py`：13 条（派生/hook/并发）
 - `tests/test_primitives_lifecycle.py`：3 条（restart/每 worker 事实）
-- `tests/test_primitives_resources.py`：6 条（compact/资源感知/排队）
+- `tests/test_primitives_resources.py`：7 条（compact/保留配置/资源感知/排队）
 - `tests/test_primitives_state.py`：11 条（状态/续跑/自动恢复/运行图）
 - `tests/test_primitives_guards.py`：8 条（scope/停止/快照/重试）
 - `tests/test_tools.py`：15 条（registry/provider/重试/成本/read/edit/grep/glob）
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
 - `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
-- `tests/test_server.py`：8 条（HTTP / SSE 分段 / metrics / 鉴权 / 限流 / 停止 / 成本）
+- `tests/test_server.py`：9 条（HTTP / SSE 分段 / metrics 缓存 / 鉴权 / 限流 / 停止 / 成本）
 - `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

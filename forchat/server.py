@@ -38,6 +38,7 @@ class RunManager:
         rate_limit_per_min: int = 120,
         pricing: Any | None = None,
         keep_runtimes: int = 100,
+        metrics_ttl: float = 5.0,
     ) -> None:
         self.runs_root = Path(runs_root)
         self.workflows_root = Path(workflows_root)
@@ -49,6 +50,8 @@ class RunManager:
         self.rate_limit_per_min = rate_limit_per_min
         self.pricing = pricing
         self.keep_runtimes = max(1, keep_runtimes)
+        self.metrics_ttl = max(0.0, float(metrics_ttl))
+        self._metrics_cache: tuple[float, str] | None = None
         self._threads: dict[str, threading.Thread] = {}
         self._runtimes: dict[str, Runtime] = {}
         self._rate: dict[str, tuple[float, int]] = {}
@@ -132,13 +135,17 @@ class RunManager:
         return Replay(EventLog(run_dir)).graph()
 
     def metrics_text(self) -> str:
-        """Prometheus 文本格式（简单够用，不做直方图）。"""
+        """Prometheus 文本格式。带 TTL 缓存：scrape 不能每次重读全部事件。"""
+        now = time.time()
+        if self._metrics_cache is not None and now - self._metrics_cache[0] < self.metrics_ttl:
+            return self._metrics_cache[1]
+
         runs = self.list_runs(1000)
         running = sum(1 for item in runs if item["status"] == "running")
         workers = sum(int(item["workers"] or 0) for item in runs)
         tokens = sum(int(item["tokens"] or 0) for item in runs)
         cost = sum(float(item["cost_usd"] or 0) for item in runs)
-        return (
+        text = (
             "# HELP forchat_runs_total Total runs known to this server.\n"
             "# TYPE forchat_runs_total gauge\n"
             f"forchat_runs_total {len(runs)}\n"
@@ -155,6 +162,8 @@ class RunManager:
             "# TYPE forchat_cost_usd_total gauge\n"
             f"forchat_cost_usd_total {cost:.6f}\n"
         )
+        self._metrics_cache = (now, text)
+        return text
 
     def _iter_runs(self, limit: int):
         if not self.runs_root.is_dir():
@@ -373,4 +382,5 @@ def _default_manager() -> RunManager:
         pricing=pricing if pricing.known() else None,
         token=os.environ.get("FORCHAT_SERVER_TOKEN") or None,
         rate_limit_per_min=int(os.environ.get("FORCHAT_RATE_LIMIT", 120)),
+        metrics_ttl=float(os.environ.get("FORCHAT_METRICS_TTL", 5)),
     )

@@ -177,9 +177,44 @@ def test_wall_clock_fence() -> None:
 
 
 
+def test_eventlog_cross_process_append() -> None:
+    """两个进程同时写同一个 run 目录：文件锁保证不互相插行。"""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    work = tmpdir()
+    script = work / "writer.py"
+    script.write_text(
+        "import sys\n"
+        "from forchat.primitives.store import EventLog\n"
+        "log = EventLog(sys.argv[1])\n"
+        "for index in range(40):\n"
+        "    log.append('noise', writer=sys.argv[2], index=index)\n",
+        encoding="utf-8",
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    run_dir = work / "run"
+    procs = [
+        subprocess.Popen([sys.executable, str(script), str(run_dir), name], env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        for name in ("a", "b")
+    ]
+    for proc in procs:
+        proc.wait(timeout=60)
+        assert proc.returncode == 0, proc.stderr.read() if proc.stderr else b""
+
+    events = EventLog(run_dir).read()
+    assert len(events) == 80, len(events)
+    assert {event.get("writer") for event in events} == {"a", "b"}
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
+        ("事件流跨进程追加", test_eventlog_cross_process_append),
         ("eventlog 追加/查询/附件", test_eventlog),
         ("workflow 拒绝未知工具", test_workflow_rejects_unknown_tool),
         ("workflow 拒绝不存在的派生目标", test_workflow_rejects_bad_spawn_target),

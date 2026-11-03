@@ -133,10 +133,19 @@ class WorkerMixin:
         return text[:2000], "llm", tokens
 
     def _archive_compacted(self, worker: WorkerInstance, dropped: list[dict]) -> str:
-        """把被裁掉的对话整段落盘，之后可以查（--inspect 或直接读文件）。"""
+        """把被裁掉的对话整段落盘，之后可以查（--inspect 或直接读文件）。
+
+        保留策略：`FORCHAT_COMPACT_KEEP`（默认 0 = 全留，方便事后优化分析）；
+        设成 N 就只留最近 N 份（同一 worker）。
+        """
         folder = self.dir / "compacted"
         folder.mkdir(parents=True, exist_ok=True)
-        index = len(list(folder.glob(f"{worker.id}-*.json"))) + 1
+        existing: list[int] = []
+        for item in folder.glob(f"{worker.id}-*.json"):
+            suffix = item.stem.rsplit("-", 1)[-1]
+            if suffix.isdigit():
+                existing.append(int(suffix))
+        index = (max(existing) if existing else 0) + 1
         path = folder / f"{worker.id}-{index:03d}.json"
         payload = {
             "worker_id": worker.id,
@@ -144,6 +153,12 @@ class WorkerMixin:
             "messages": dropped,
         }
         path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+
+        keep = int(os.environ.get("FORCHAT_COMPACT_KEEP", "0"))
+        if keep > 0:
+            files = sorted(folder.glob(f"{worker.id}-*.json"))
+            for stale in files[:-keep]:
+                stale.unlink(missing_ok=True)
         return str(path.relative_to(self.dir))
 
     @staticmethod

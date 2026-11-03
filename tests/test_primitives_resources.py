@@ -223,10 +223,44 @@ def test_compact_uses_llm_summary_when_available() -> None:
     assert fallback.log.query(type="context_compacted")[0]["summary_source"] == "digest"
 
 
+def test_compact_archive_retention_configurable() -> None:
+    """FORCHAT_COMPACT_KEEP=N：只留最近 N 份归档（默认 0 = 全留）。"""
+    import os
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    turns = [tool_chunks([("read_state", {})]) for _ in range(24)]
+    turns.append(tool_chunks([("report", {"summary": "ok"})]))
+    old_messages = os.environ.get("FORCHAT_CONTEXT_MESSAGES")
+    old_keep = os.environ.get("FORCHAT_COMPACT_KEEP")
+    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "6"
+    os.environ["FORCHAT_COMPACT_KEEP"] = "2"
+    run_dir = tmpdir()
+    try:
+        runtime = Runtime(workflow, FakeProvider(TemplateResponder({"root": turns})), run_dir)
+        runtime.start("任务")
+    finally:
+        for key, old in (("FORCHAT_CONTEXT_MESSAGES", old_messages),
+                         ("FORCHAT_COMPACT_KEEP", old_keep)):
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
+
+    files = sorted((run_dir / "compacted").glob("n001-root-*.json"))
+    assert len(files) <= 2, files
+    assert runtime.log.query(type="context_compacted")
+
+
 def main() -> int:
     checks = [
         ("长会话 compact 归档", test_context_trimmed_for_long_sessions),
         ("compact 优先 LLM 摘要", test_compact_uses_llm_summary_when_available),
+        ("compact 归档保留配置", test_compact_archive_retention_configurable),
         ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
         ("资源余量可见", test_resources_visible_to_worker),
         ("预算低时裁剪收紧", test_context_trim_tightens_when_budget_low),
