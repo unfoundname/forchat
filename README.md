@@ -215,7 +215,7 @@ agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许�
   可选 `expected_sha256` / `expected_mtime` 做乐观并发校验——文件被别人改过就拒绝并回传当前值；
   锁是建议锁：`run_python` 里的脚本不会自动遵守；
 - `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell；
-- `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；默认拒绝内网地址（SSRF），限时 20s、限读 500KB；
+- `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；SSRF 防护含**重定向逐跳校验**，十进制/八进制/十六进制 IP、IPv6/映射地址、localhost 变体都归一化拦截；限时 20s、限读 500KB；
 - `web_search`：联网搜索（需配置 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY`，DeepSeek 的搜索接口可直接填）；
 - `screenshot`：抓屏存 PNG；`FORCHAT_VISION=1` 时运行时把它转成 `image_url` 多模态消息（网关需支持视觉）；
 - `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述；
