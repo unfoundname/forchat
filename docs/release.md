@@ -51,7 +51,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 121 条用例（CI 用这个）
+pytest -q                    # 125 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -68,6 +68,7 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_stream.py`：3 条（请求级子进程 / 超时硬杀 / 取消硬杀）
 - `tests/test_web.py`：3 条（web_search 后端 / 视觉标记转多模态）
 - `tests/test_process_worker.py`：2 条（叶子 worker 子进程执行 / 子进程硬杀）
+- `tests/test_concurrency.py`：4 条（原子写 / 旧 hash 拒绝 / edit 校验 hash+mtime）
 - `tests/test_subproc.py`：5 条（超时 / 脱敏环境 / 内存上限 / 取消 kill 工具子进程 / force_stop 联动）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

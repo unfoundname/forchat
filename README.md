@@ -209,6 +209,9 @@ agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许�
 - `edit_file`：精确替换（`old_string` 默认必须唯一），改一两行不必整文件重写；
 - `run_python`：执行脚本，支持 `cwd`（worktree 里跑测试就靠它）；
 - `write_file`：把内容真正落盘（路径安全由 policy 统一拦，覆盖前自动备份）；
+- **并发安全**：`write_file` / `edit_file` 都是**原子写**（临时文件 + `os.replace`）；可选
+  `expected_sha256` / `expected_mtime` 做乐观并发校验——文件被别人改过就拒绝并回传当前值，
+  避免"基于旧内容覆盖别人新内容"；
 - `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell；
 - `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；默认拒绝内网地址（SSRF），限时 20s、限读 500KB；
 - `web_search`：联网搜索（需配置 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY`，DeepSeek 的搜索接口可直接填）；
