@@ -2,6 +2,9 @@
 
 路径安全由 policy 在运行时层统一拦（越界、敏感文件），这里只做 IO，
 并把常见的编码/权限错误变成可读回执。
+
+覆盖已有文件前会自动留一份备份（`.forchat-backups/<相对路径>`），
+这样"写错/删错"至少还能捞回来——我们没有沙箱，回滚点是最后的保险。
 """
 from __future__ import annotations
 
@@ -9,10 +12,25 @@ from pathlib import Path
 
 from ..registry import tool
 
+BACKUP_DIR = ".forchat-backups"
+
+
+def _backup_existing(target: Path, root: Path) -> str | None:
+    if not target.is_file():
+        return None
+    try:
+        rel = target.resolve().relative_to(root)
+    except ValueError:
+        rel = Path(target.name)
+    backup = root / BACKUP_DIR / rel
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    backup.write_text(target.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+    return str(backup.relative_to(root))
+
 
 @tool(
     description="写入文本文件（覆盖或新建）。相对路径按当前工作目录解析；"
-                "需要新建目录时会自动创建。",
+                "需要新建目录时会自动创建；覆盖已有文件前会自动备份到 .forchat-backups/。",
     params={
         "path": "目标文件路径，例如 src/app.py 或 notes/plan.md",
         "content": "完整文件内容（会整体覆盖，不是追加）",
@@ -20,11 +38,16 @@ from ..registry import tool
 )
 def write_file(path: str, content: str) -> str:
     target = Path(path)
+    root = Path.cwd().resolve()
+    note = ""
     try:
+        backup = _backup_existing(target, root)
+        if backup:
+            note = f"（旧内容已备份到 {backup}）"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
     except IsADirectoryError:
         return f"错误：{path} 是目录"
     except OSError as exc:
         return f"错误：写入失败 {path}: {exc}"
-    return f"已写入 {path}（{len(content)} 字符）"
+    return f"已写入 {path}（{len(content)} 字符）{note}"

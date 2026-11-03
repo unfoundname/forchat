@@ -276,6 +276,60 @@ def test_policy_scope_enforced() -> None:
         assert blocked, sneaky
 
 
+def test_run_python_scrubs_secrets() -> None:
+    """run_python 的子进程不能继承 API_KEY 之类的密钥，普通变量照常传递。"""
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    script = work / "show_env.py"
+    script.write_text(
+        "import os\n"
+        "print('KEY=' + str(os.environ.get('DEEPSEEK_API_KEY', 'missing')))\n"
+        "print('PLAIN=' + str(os.environ.get('FORCHAT_TEST_PLAIN', 'missing')))\n",
+        encoding="utf-8",
+    )
+    old_key = os.environ.get("DEEPSEEK_API_KEY")
+    old_plain = os.environ.get("FORCHAT_TEST_PLAIN")
+    os.environ["DEEPSEEK_API_KEY"] = "secret-should-not-leak"
+    os.environ["FORCHAT_TEST_PLAIN"] = "visible"
+    try:
+        out = registry.execute("run_python", json.dumps({"script": "show_env.py", "cwd": str(work)}))
+    finally:
+        for key, old in (("DEEPSEEK_API_KEY", old_key), ("FORCHAT_TEST_PLAIN", old_plain)):
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
+
+    assert "KEY=missing" in out, out
+    assert "PLAIN=visible" in out, out
+
+
+def test_write_file_backs_up_overwrite() -> None:
+    """覆盖已有文件前留备份，旧内容可找回。"""
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    (work / "note.txt").write_text("旧内容", encoding="utf-8")
+    old_cwd = os.getcwd()
+    os.chdir(work)
+    try:
+        result = registry.execute(
+            "write_file", json.dumps({"path": "note.txt", "content": "新内容"})
+        )
+    finally:
+        os.chdir(old_cwd)
+
+    assert "已写入" in result, result
+    backup = work / ".forchat-backups" / "note.txt"
+    assert backup.is_file(), list(work.iterdir())
+    assert backup.read_text(encoding="utf-8") == "旧内容"
+
+
 def main() -> int:
     checks = [
         ("能力工具桥接：外部工具注入", test_external_tools_bridge),
@@ -289,6 +343,8 @@ def main() -> int:
         ("git 白名单", test_git_tool_whitelist),
         ("run_python 支持 cwd", test_run_python_cwd),
         ("scope 授权范围", test_policy_scope_enforced),
+        ("run_python 擦除密钥", test_run_python_scrubs_secrets),
+        ("write_file 覆盖前备份", test_write_file_backs_up_overwrite),
     ]
     return run("工具与安全自检", checks)
 

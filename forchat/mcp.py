@@ -11,11 +11,12 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import threading
 from typing import Any
+
+from .env_scrub import clean_environ
 
 
 class MCPError(RuntimeError):
@@ -63,7 +64,8 @@ class MCPClient:
 
     # ---------------------------------------------------------------- 生命周期
     def start(self) -> "MCPClient":
-        env = {**os.environ, **self.env}
+        # 继承的环境擦掉密钥；配置里显式写的 env 仍然生效（那是用户主动授予的）
+        env = clean_environ(self.env)
         self.proc = subprocess.Popen(
             [self.command, *self.args],
             stdin=subprocess.PIPE,

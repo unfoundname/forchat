@@ -8,6 +8,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from ..env_scrub import clean_environ
 from ..registry import tool
 
 ALLOWED = {
@@ -45,6 +46,7 @@ def git(args: str, cwd: str = "") -> str:
             encoding="utf-8",
             errors="replace",
             timeout=TIMEOUT,
+            env=clean_environ(),
         )
     except subprocess.TimeoutExpired:
         return f"错误：git {parts[0]} 超时（>{TIMEOUT}s）"

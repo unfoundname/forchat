@@ -9,3 +9,4 @@ venv/
 .mypy_cache/
 node_modules/
 .worktrees/
+.forchat-backups/
