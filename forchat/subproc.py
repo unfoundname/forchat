@@ -71,7 +71,7 @@ def run(
     """执行命令并施加超时/内存上限/取消。超时抛 TimeoutExpired，取消抛 Cancelled。"""
     limit_mb = MEMORY_MB if memory_mb is None else memory_mb
     scrub = env is None
-    envv = clean_environ() if scrub else dict(env)
+    envv = clean_environ() if scrub else dict(env or {})
     worker_id = _CURRENT.get()
 
     def _preexec() -> None:                     # pragma: no cover - Windows 走不到
@@ -79,9 +79,9 @@ def run(
 
         if limit_mb:
             limit = limit_mb * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))  # type: ignore[attr-defined]
         cpu = max(1, int(timeout))
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))  # type: ignore[attr-defined]
 
     proc = exec_mod.spawn(
         cmd,

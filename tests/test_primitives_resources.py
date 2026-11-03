@@ -17,7 +17,6 @@ from forchat.primitives import Runtime, WorkflowDef
 from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 
 
-
 def test_context_trimmed_for_long_sessions() -> None:
     """长会话必须裁剪上下文：保留 system+任务+最近轮次，并留事件。"""
     import os
@@ -262,7 +261,6 @@ def test_compact_archive_retention_configurable() -> None:
 
 def test_stuck_worker_detection() -> None:
     """心跳超时的 running/queued worker 会被 stuck_workers 标出来。"""
-    import time
 
     from forchat.primitives.types import WorkerInstance
 

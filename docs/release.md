@@ -3,6 +3,9 @@
 日期：2026-11-03  
 状态：引擎层目标达成；部署层（沙箱/多租户/UI）不在本仓库范围。
 
+CI：`ruff check` + `mypy`（核心工具模块）+ `pytest --cov`（门槛 65%）+ 分层 + demo。
+Docker：`Dockerfile` + `docker-compose.yml`（只读根、cap_drop、no-new-privileges、内存/pid 限额）。
+
 ## 1. 范围
 
 本仓库做的是**原语引擎**：执行模型、能力面、记录面、装配面。不含任何业务领域词。

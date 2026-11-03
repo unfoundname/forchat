@@ -1,0 +1,24 @@
+services:
+  forchat:
+    build: .
+    image: forchat:0.2.0
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      FORCHAT_MAX_TOKENS: ${FORCHAT_MAX_TOKENS:-2048}
+      FORCHAT_REQUEST_TIMEOUT: ${FORCHAT_REQUEST_TIMEOUT:-120}
+    command:
+      - --workflow
+      - examples/workflows/minimal/workflow.json
+      - 跑通最小示例
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    pids_limit: 256

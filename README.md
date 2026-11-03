@@ -127,6 +127,28 @@ python -m forchat --prune --keep 20          # 看清理计划（默认 dry-run�
 python -m forchat --resume .runs/<run> "继续推进"                    # 在同一个运行目录上续跑
 ```
 
+## Docker 部署（可选）
+
+镜像只装引擎（不装测试/开发依赖），非 root 运行：
+
+```powershell
+docker build -t forchat:0.2.0 .
+docker run --rm -it -v ${PWD}:/workspace -w /workspace `
+  -e DEEPSEEK_API_KEY=$env:DEEPSEEK_API_KEY `
+  forchat:0.2.0 --workflow examples/workflows/minimal/workflow.json "跑通最小示例"
+```
+
+`docker-compose.yml` 额外加了部署层隔离：只读根文件系统（工作区挂载可写）、`/tmp` tmpfs、
+`cap_drop: ALL`、`no-new-privileges`、内存/pid 限额。用法：
+
+```powershell
+$env:DEEPSEEK_API_KEY = "sk-xxx"
+docker compose run --rm forchat --workflow examples/workflows/minimal/workflow.json "目标"
+```
+
+注意：容器隔离的是**部署环境**，不是引擎内部工具；`run_python` 在容器里仍是任意代码，
+真正的边界来自只读根、挂载范围、用户权限和网络策略（见 [docs/sandbox.md](docs/sandbox.md)）。
+
 ## 三层
 
 | 层 | 是什么 | 放哪 |

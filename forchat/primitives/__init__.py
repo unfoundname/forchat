@@ -3,8 +3,8 @@ from .replay import Replay
 from .runtime import Runtime
 from .scheduler import Scheduler
 from .store import EventLog
-from .types import Budget, WorkerInstance, Report
-from .workflow import WorkflowDef, WorkflowError, WorkerTemplate
+from .types import Budget, Report, WorkerInstance
+from .workflow import WorkerTemplate, WorkflowDef, WorkflowError
 
 __all__ = [
     "Budget",

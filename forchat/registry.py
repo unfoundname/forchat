@@ -128,6 +128,8 @@ def execute(name: str, arguments: str) -> str:
     if not isinstance(args, dict):
         return "错误：参数必须是 JSON 对象"
 
+    if item.func is None:
+        return "错误：工具没有实现"
     try:
         return str(item.func(**args))
     except TypeError as exc:

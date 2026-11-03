@@ -36,7 +36,7 @@ class DeepSeekProvider:
             if not self.api_key:
                 raise RuntimeError("请先设置环境变量 DEEPSEEK_API_KEY")
             try:
-                from openai import OpenAI      # 延迟 import：没有 SDK 也能跑假 provider
+                from openai import OpenAI  # 延迟 import：没有 SDK 也能跑假 provider
             except ImportError as exc:
                 raise RuntimeError("缺少 openai SDK：pip install openai") from exc
             self._client = OpenAI(

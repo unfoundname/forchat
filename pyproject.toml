@@ -14,7 +14,7 @@ dependencies = []
 
 [project.optional-dependencies]
 llm = ["openai>=1.0"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.10"]
 
 [project.scripts]
 forchat = "forchat.__main__:main"
@@ -25,3 +25,31 @@ include = ["forchat*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+files = [
+    "forchat/exec.py",
+    "forchat/subproc.py",
+    "forchat/env_scrub.py",
+    "forchat/pricing.py",
+    "forchat/runs.py",
+    "forchat/tools/_files.py",
+    "forchat/tools/_locks.py",
+]
+
+[tool.coverage.run]
+source = ["forchat"]
+
+[tool.coverage.report]
+fail_under = 65
+skip_covered = true

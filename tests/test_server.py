@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _support import MINIMAL, run, tmpdir
+from _support import run, tmpdir
 
 from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 from forchat.server import RunManager, _make_handler

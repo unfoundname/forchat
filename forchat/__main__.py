@@ -16,8 +16,11 @@ import sys
 import time
 from pathlib import Path
 
-from . import registry, skills
-from . import tools  # noqa: F401  (触发能力工具注册)
+from . import (
+    registry,
+    skills,
+    tools,  # noqa: F401  (触发能力工具注册)
+)
 from .mcp_bridge import close_all, connect_from_config
 from .primitives import EventLog, Replay, Runtime, WorkflowDef, WorkflowError
 
@@ -145,7 +148,8 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     from .pricing import Pricing
     from .providers.deepseek import DeepSeekProvider
     from .providers.retry import RetryProvider
-    from .tool_bridge import build as build_tools, build_skill_loader
+    from .tool_bridge import build as build_tools
+    from .tool_bridge import build_skill_loader
 
     attempts = int(os.environ.get("FORCHAT_RETRIES", 2))
     provider = DeepSeekProvider()

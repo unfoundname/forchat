@@ -16,6 +16,7 @@ from _support import MINIMAL, run, tmpdir
 from forchat.primitives import Runtime, WorkflowDef
 from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 
+
 def test_runtime_spawns_and_reports() -> None:
     workflow = WorkflowDef.load(MINIMAL)
     responder = TemplateResponder(

@@ -77,7 +77,7 @@ class EventLog:
 
         with self._lock:
             # 跨进程文件锁：两个进程写同一个 run 目录时不会互相插行
-            with self._lock_file() as lock:
+            with self._lock_file():
                 self._maybe_rotate()
                 if type in TOOL_EVENTS:
                     self._maybe_rotate_tools()

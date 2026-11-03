@@ -28,7 +28,8 @@ def main() -> int:
     from .primitives.types import WorkerInstance
     from .providers.deepseek import DeepSeekProvider
     from .providers.fake import FakeProvider
-    from .tool_bridge import build as build_tools, build_skill_loader
+    from .tool_bridge import build as build_tools
+    from .tool_bridge import build_skill_loader
 
     tools = build_tools()
     workflow = WorkflowDef.from_dict(

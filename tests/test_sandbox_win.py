@@ -79,7 +79,7 @@ def test_fail_closed_when_grant_fails() -> None:
 
 def test_sandbox_off_runs_normally() -> None:
     work, outside = tmpdir(), tmpdir()
-    proc = _run_child(work, outside, sandbox=False)
+    _run_child(work, outside, sandbox=False)
     assert (work / "in.txt").is_file()
     assert (outside / "out.txt").is_file(), "关闭沙箱时不限制写入"
 

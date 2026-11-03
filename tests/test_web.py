@@ -119,6 +119,7 @@ def test_screenshot_marker_to_image_message() -> None:
     import os
 
     from _support import tmpdir
+
     from forchat.primitives import Runtime
 
     work = tmpdir()
