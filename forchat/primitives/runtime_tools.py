@@ -96,6 +96,11 @@ class ToolsMixin:
         wait = bool(args.get("wait", True))
         raw_paths = args.get("paths") or []
 
+        if getattr(self, "_hard_stopped", False):
+            self.log.append("spawn_rejected", worker_id=worker.id, reason="budget_hard",
+                            template=template)
+            return "错误：预算硬上限已触发，不再接受新 worker"
+
         if template not in tpl.can_spawn:
             self.log.append("spawn_rejected", worker_id=worker.id, reason="not_allowed",
                             template=template, allowed=tpl.can_spawn)

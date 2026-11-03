@@ -173,6 +173,7 @@ class RunManager:
         workers = sum(int(item["workers"] or 0) for item in runs)
         tokens = sum(int(item["tokens"] or 0) for item in runs)
         cost = sum(float(item["cost_usd"] or 0) for item in runs)
+        hard_stops = sum(int(item.get("hard_stops") or 0) for item in runs)
         stuck = sum(len(rt.stuck_workers()) for rt in list(self._runtimes.values()))
         status_counts: dict[str, int] = {}
         for item in runs:
@@ -197,6 +198,9 @@ class RunManager:
             "# HELP forchat_cost_usd_total Estimated cost across known runs.\n"
             "# TYPE forchat_cost_usd_total gauge\n"
             f"forchat_cost_usd_total {cost:.6f}\n"
+            "# HELP forchat_budget_hard_stops_total Hard budget stops across known runs.\n"
+            "# TYPE forchat_budget_hard_stops_total gauge\n"
+            f"forchat_budget_hard_stops_total {hard_stops}\n"
             "# HELP forchat_stuck_workers Live workers without a recent heartbeat.\n"
             "# TYPE forchat_stuck_workers gauge\n"
             f"forchat_stuck_workers {stuck}\n"
@@ -246,6 +250,7 @@ class RunManager:
             "workers": (last or {}).get("workers"),
             "tokens": (last or {}).get("total_tokens"),
             "cost_usd": (last or {}).get("total_cost_usd"),
+            "hard_stops": (last or {}).get("budget_hard_stops", 0),
             "elapsed": (last or {}).get("elapsed"),
             "alive": bool(thread and thread.is_alive()),
             "stuck": stuck,

@@ -252,6 +252,69 @@ def test_resume_worker_from_snapshot() -> None:
 
 
 
+def _usage_round() -> list[dict]:
+    chunks = list(tool_chunks([("read_state", {})]))
+    chunks.append({"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 60}})
+    return chunks
+
+
+def _hard_workflow(**limits) -> WorkflowDef:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    if limits:
+        raw["limits"] = limits
+    return WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+
+def test_budget_hard_stop_worker() -> None:
+    """worker 级硬上限：超了立刻停，不再执行下一轮。"""
+    workflow = _hard_workflow()
+    workflow.workers["root"].budget.hard_tokens = 100
+    provider = FakeProvider(TemplateResponder({"root": [_usage_round() for _ in range(3)]}))
+    runtime = Runtime(workflow, provider, tmpdir())
+    root = runtime.start("任务")
+
+    events = runtime.log.query(type="budget_hard_stop")
+    assert events and events[0]["scope"] == "worker", events
+    assert root.status == "failed"
+    assert len(runtime.log.query(type="round_start")) == 2
+
+
+def test_budget_hard_stop_run() -> None:
+    """run 级硬上限：总 token 超了直接叫停所有 worker。"""
+    workflow = _hard_workflow(max_total_hard_tokens=100)
+    provider = FakeProvider(TemplateResponder({"root": [_usage_round() for _ in range(3)]}))
+    runtime = Runtime(workflow, provider, tmpdir())
+    root = runtime.start("任务")
+
+    events = runtime.log.query(type="budget_hard_stop")
+    assert events and events[0]["scope"] == "run", events
+    assert root.status == "failed"
+    finished = runtime.log.query(type="run_finished")[-1]
+    assert finished["budget_hard_stops"] >= 1
+
+
+def test_budget_hard_gate_off_by_default() -> None:
+    """默认不硬切：没有配置 hard_tokens 就只记账。"""
+    workflow = _hard_workflow()
+    provider = FakeProvider(
+        TemplateResponder(
+            {
+                "root": [
+                    _usage_round(),
+                    tool_chunks([("report", {"summary": "完成"})]),
+                ]
+            }
+        )
+    )
+    runtime = Runtime(workflow, provider, tmpdir())
+    root = runtime.start("任务")
+    assert root.status == "done"
+    assert not runtime.log.query(type="budget_hard_stop")
+
+
 def main() -> int:
     checks = [
         ("workflow 拒绝未知技能", test_workflow_rejects_unknown_skill),
@@ -262,6 +325,9 @@ def main() -> int:
         ("事件流滚动与完整性", test_event_log_rotation_and_integrity),
         ("worker 级重试", test_worker_retries_transient_error),
         ("快照续跑单个 worker", test_resume_worker_from_snapshot),
+        ("预算硬闸-worker", test_budget_hard_stop_worker),
+        ("预算硬闸-run", test_budget_hard_stop_run),
+        ("预算硬闸默认关闭", test_budget_hard_gate_off_by_default),
     ]
     return run("原语围栏自检", checks)
 

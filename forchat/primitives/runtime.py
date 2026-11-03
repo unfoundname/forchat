@@ -90,11 +90,15 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
             float(workflow.limits.get("max_total_seconds", 604800)),
         )
         self.max_total_tokens = int(workflow.limits.get("max_total_tokens", 1_000_000_000))
+        self.max_total_hard_tokens = int(workflow.limits.get("max_total_hard_tokens", 0))
         self.max_total_cost_usd = workflow.limits.get("max_total_cost_usd")
         self.total_tokens = 0
         self.total_cost_usd = 0.0
         self._budget_tripped = False
         self._total_budget_logged = False
+        self._hard_stopped = False
+        self._hard_workers: set[str] = set()
+        self.hard_stop_count = 0
         self.run_deadline: float | None = None
         self.scheduler = Scheduler(
             max_concurrent or int(workflow.limits.get("max_concurrent", 2))
@@ -130,12 +134,38 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
                 self.total_tokens += tokens
                 if self.total_tokens >= self.max_total_tokens:
                     self._budget_tripped = True
+                if (self.max_total_hard_tokens and not self._hard_stopped
+                        and self.total_tokens >= self.max_total_hard_tokens):
+                    self._hard_stopped = True
+                    self.hard_stop_count += 1
+                    self.log.append("budget_hard_stop", scope="run",
+                                    spent=self.total_tokens,
+                                    limit=self.max_total_hard_tokens)
+                    for worker_id in list(self.workers):
+                        self.force_stop(worker_id)
             if cost_usd:
                 self.total_cost_usd += cost_usd
                 if self.max_total_cost_usd is not None and self.total_cost_usd >= float(
                     self.max_total_cost_usd
                 ):
                     self._budget_tripped = True
+
+    def _hard_worker_limit(self, tpl) -> int:
+        env = os.environ.get("FORCHAT_HARD_TOKENS")
+        try:
+            env_limit = int(env) if env else 0
+        except ValueError:
+            env_limit = 0
+        return env_limit or int(getattr(tpl.budget, "hard_tokens", 0) or 0)
+
+    def _hard_stop_worker(self, worker: WorkerInstance, scope: str, limit: int) -> None:
+        if worker.id in self._hard_workers:
+            return
+        self._hard_workers.add(worker.id)
+        self.hard_stop_count += 1
+        self.log.append("budget_hard_stop", worker_id=worker.id, scope=scope,
+                        spent=worker.budget.spent_tokens, limit=limit)
+        self.force_stop(worker.id)
 
     # ------------------------------------------------------------------ 宿主侧干预
     def force_stop(self, worker_id: str) -> bool:
@@ -309,6 +339,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
                     w.budget.soft_logged for w in self.workers.values()
                 ),
                 budget_limit=self.max_total_tokens,
+                budget_hard_stops=self.hard_stop_count,
                 **({"total_cost_usd": round(self.total_cost_usd, 6)}
                    if self.pricing is not None else {}),
                 scheduler=self.scheduler.stats(),

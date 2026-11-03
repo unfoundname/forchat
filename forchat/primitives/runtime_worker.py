@@ -66,6 +66,9 @@ class WorkerMixin:
         # 默认不限轮数：协调型 worker 跑几十上百轮是正常的，真正的闸是预算与墙钟。
         # 想给单个模板设上限，就在 workflow.json 里写 max_rounds。
         while True:
+            if self._hard_stopped or worker.id in getattr(self, "_hard_workers", set()):
+                reason = "budget_hard"
+                break
             if tpl.max_rounds is not None and rnd >= tpl.max_rounds:
                 reason = "max_rounds"
                 break
@@ -123,6 +126,13 @@ class WorkerMixin:
             )
             self._charge_total(tokens, cost)
             last_text = text
+
+            hard_limit = self._hard_worker_limit(tpl)
+            if hard_limit and worker.budget.spent_tokens >= hard_limit:
+                self._hard_stop_worker(worker, "worker", hard_limit)
+            if self._hard_stopped or worker.id in getattr(self, "_hard_workers", set()):
+                reason = "budget_hard"
+                break
 
             if usage.get("truncated") and calls:
                 # 参数缺尾巴，硬执行只会产生 JSON 错误：丢弃这一轮的调用，让模型重写

@@ -20,7 +20,7 @@ BUILTIN_TOOLS = {
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {
     "max_concurrent", "max_depth", "max_workers", "max_wall_seconds",
-    "max_total_tokens", "max_total_seconds", "max_total_cost_usd",
+    "max_total_tokens", "max_total_hard_tokens", "max_total_seconds", "max_total_cost_usd",
 }
 _WORKER_KEYS = {
     "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks",
@@ -132,6 +132,9 @@ class WorkflowDef:
         bad_limits = set(limits) - _LIMIT_KEYS
         if bad_limits:
             raise WorkflowError(f"limits 未知字段：{sorted(bad_limits)}")
+        hard_total = limits.get("max_total_hard_tokens", 0)
+        if not isinstance(hard_total, int) or hard_total < 0:
+            raise WorkflowError("limits.max_total_hard_tokens 必须是非负整数（0 = 关闭）")
 
         workers_raw = raw["workers"]
         if not isinstance(workers_raw, dict) or not workers_raw:

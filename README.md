@@ -177,7 +177,8 @@ examples/workflows/minimal/
 | `max_depth` | 3 | 派生深度 |
 | `max_workers` | 16 | worker 总数 |
 | `max_wall_seconds` | 3600 | 整轮墙钟 |
-| `max_total_tokens` | 1,000,000 | 整轮 token 总闸；超了所有 worker 收尾、拒绝新派生 |
+| `max_total_tokens` | 1,000,000 | 软总闸；超了记 `run_budget_exceeded`、拒绝新派生，正在跑的收尾 |
+| `max_total_hard_tokens` | 0（关） | **硬闸**：总 token 超了直接 `force_stop` 所有 worker |
 | `max_total_seconds` | 3600 | 与 `max_wall_seconds` 取小 |
 
 `run_finished` 事件里会记 `total_tokens` 与 `budget_limit`，`--inspect` 能看到。
@@ -269,10 +270,14 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
 做 5B~10B token 的重型项目：在 `workflow.json` 里显式写
 `limits.max_total_tokens`、`limits.max_wall_seconds`，并给每个模板写 `budget.tokens`。
 
-**预算是记账，不是闸**（按"花超一点点没关系"设计）：
+**默认是记账，不是闸**（按"花超一点点没关系"设计）；需要硬闸时显式配置：
 
 - worker 超软预算 → 记 `budget_exceeded`，**继续跑**；
 - 整轮超 `max_total_tokens` → 记 `run_budget_exceeded`，**只拒绝新派生**，正在跑的 worker 收尾；
+- **硬闸**：worker 模板 `budget.hard_tokens` 或整轮 `limits.max_total_hard_tokens`（0 = 关闭），
+  超限直接 `force_stop`（会 kill 模型/工具子进程），记 `budget_hard_stop` 事件、
+  `run_finished.budget_hard_stops` 与 `/metrics` 的 `forchat_budget_hard_stops_total`；
+- 也可用环境变量 `FORCHAT_HARD_TOKENS` / `FORCHAT_HARD_TOTAL_TOKENS` 临时开；
 - 唯一会真正中断的是**墙钟**（`run_expired`）和手动 `stop_worker`；
 - `run_finished` 带 `budget_exceeded` 标记，方便事后查"这次超了多少"。
 

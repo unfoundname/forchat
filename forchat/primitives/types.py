@@ -22,6 +22,7 @@ class Budget:
     tokens: int = 20_000_000
     wall_seconds: float = 14400.0
     max_cost_usd: float | None = None
+    hard_tokens: int = 0             # 硬上限：超了直接停（0 = 关闭；软上限 tokens 只记账）
     spent_tokens: int = 0
     spent_seconds: float = 0.0
     spent_prompt_tokens: int = 0
@@ -32,10 +33,13 @@ class Budget:
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Budget":
         data = data or {}
-        known = {"tokens", "wall_seconds", "max_cost_usd"}
+        known = {"tokens", "wall_seconds", "max_cost_usd", "hard_tokens"}
         unknown = set(data) - known
         if unknown:
             raise ValueError(f"budget 里有未知字段：{sorted(unknown)}")
+        hard = data.get("hard_tokens", 0)
+        if not isinstance(hard, int) or hard < 0:
+            raise ValueError("budget.hard_tokens 必须是非负整数（0 = 关闭）")
         return cls(**{k: data[k] for k in known if k in data})
 
     def charge(
