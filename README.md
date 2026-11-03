@@ -22,7 +22,7 @@ ForChat/
 │   │   ├── workflow.py         workflow.json 严格加载与校验
 │   │   ├── runtime.py          ★ Runtime：spawn / report / read_state / write_note
 │   │   └── replay.py           review（人读）/ tree / tool_calls
-│   ├── providers/              base(Protocol) · fake(离线) · deepseek(唯一用 SDK)
+│   ├── providers/              base(Protocol) · fake(离线) · retry(瞬时重试) · deepseek(唯一用 SDK)
 │   ├── tools/                  能力工具：read / list_dir / run_python / write_file / git
 │   ├── skills/                 技能加载（SKILL.md）
 │   ├── mcp.py                  MCP 客户端（stdio + JSON-RPC）
@@ -214,6 +214,8 @@ def upper(text: str) -> str:
 ## 失败隔离
 
 - 模型/网络异常只让当前 worker 失败（事件 `worker_error`），整次运行继续；
+- **瞬时错误自动重试**：`RetryProvider` 只对超时/连接/限流/5xx 重试，且**只在还没吐出任何分片时**重试
+  （已流出去的内容不能重来）；次数用 `FORCHAT_RETRIES` 控制，默认 2；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
 - 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完；
 - 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。

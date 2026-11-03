@@ -335,6 +335,77 @@ def test_write_file_backs_up_overwrite() -> None:
     assert backup.read_text(encoding="utf-8") == "旧内容"
 
 
+def test_retry_provider_retries_before_first_chunk() -> None:
+    from forchat.providers.retry import RetryProvider
+
+    calls = {"n": 0}
+
+    class Flaky:
+        name = "flaky"
+
+        def stream(self, model, messages, tools=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("模拟瞬时超时")
+            yield {"choices": [{"delta": {"content": "ok"}}]}
+
+    provider = RetryProvider(Flaky(), attempts=2, backoff=0, transient=(TimeoutError,))
+    chunks = list(provider.stream("m", [], None))
+    assert calls["n"] == 2
+    assert chunks and chunks[0]["choices"][0]["delta"]["content"] == "ok"
+
+
+def test_retry_provider_does_not_retry_midstream() -> None:
+    """已经吐出分片后再失败不能重试，否则内容会重复。"""
+    from forchat.providers.retry import RetryProvider
+
+    calls = {"n": 0}
+
+    class MidFail:
+        name = "mid"
+
+        def stream(self, model, messages, tools=None):
+            calls["n"] += 1
+            yield {"choices": [{"delta": {"content": "half"}}]}
+            raise TimeoutError("流到一半断了")
+
+    provider = RetryProvider(MidFail(), attempts=3, backoff=0, transient=(TimeoutError,))
+    got = []
+    try:
+        for chunk in provider.stream("m", [], None):
+            got.append(chunk)
+    except TimeoutError:
+        pass
+    else:
+        raise AssertionError("应当把异常抛出来")
+
+    assert len(got) == 1
+    assert calls["n"] == 1
+
+
+def test_retry_provider_exhausts_attempts() -> None:
+    from forchat.providers.retry import RetryProvider
+
+    calls = {"n": 0}
+
+    class AlwaysDown:
+        name = "down"
+
+        def stream(self, model, messages, tools=None):
+            calls["n"] += 1
+            raise ConnectionError("连不上")
+            yield  # pragma: no cover
+
+    provider = RetryProvider(AlwaysDown(), attempts=3, backoff=0, transient=(ConnectionError,))
+    try:
+        list(provider.stream("m", [], None))
+    except ConnectionError:
+        pass
+    else:
+        raise AssertionError("重试耗尽后应当抛出原异常")
+    assert calls["n"] == 3
+
+
 def main() -> int:
     checks = [
         ("能力工具桥接：外部工具注入", test_external_tools_bridge),
@@ -350,6 +421,9 @@ def main() -> int:
         ("scope 授权范围", test_policy_scope_enforced),
         ("run_python 擦除密钥", test_run_python_scrubs_secrets),
         ("write_file 覆盖前备份", test_write_file_backs_up_overwrite),
+        ("RetryProvider：首片前重试", test_retry_provider_retries_before_first_chunk),
+        ("RetryProvider：流中不重试", test_retry_provider_does_not_retry_midstream),
+        ("RetryProvider：重试耗尽", test_retry_provider_exhausts_attempts),
     ]
     return run("工具与安全自检", checks)
 

@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import time
@@ -94,11 +95,17 @@ def _list_skills() -> None:
 def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     from .policy import Policy
     from .providers.deepseek import DeepSeekProvider
+    from .providers.retry import RetryProvider
     from .tool_bridge import build as build_tools, build_skill_loader
+
+    attempts = int(os.environ.get("FORCHAT_RETRIES", 2))
+    provider = DeepSeekProvider()
+    if attempts > 1:
+        provider = RetryProvider(provider, attempts=attempts)
 
     return Runtime(
         workflow,
-        DeepSeekProvider(),
+        provider,
         run_dir,
         external_tools=build_tools(),
         skill_loader=build_skill_loader(),
