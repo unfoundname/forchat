@@ -164,6 +164,7 @@ class ToolsMixin:
         deadline = time.time() + timeout
         pending = dict(futures)
         while pending and time.time() < deadline:
+            self._beat(worker.id)
             for wid, future in list(pending.items()):
                 if future.done():
                     pending.pop(wid)

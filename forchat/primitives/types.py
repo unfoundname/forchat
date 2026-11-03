@@ -121,3 +121,5 @@ class WorkerInstance:
     facts_owner: str = ""
     # 本轮结束后重置对话（worker 自己调用 restart）
     restart_requested: bool = False
+    # 追加式快照：已经落盘的消息条数；-1 表示下一次要写 reset
+    snapshot_offset: int = 0

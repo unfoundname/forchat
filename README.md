@@ -48,16 +48,16 @@ ForChat/
 ├── tests/                     全部文件 ≤500 行
 │   ├── run_all.py              一条命令跑全部本地检查
 │   ├── _support.py             共享夹具：MINIMAL、tmpdir、用例执行器
-│   ├── test_primitives.py      原语：预算/配置校验（11 条）
+│   ├── test_primitives.py      原语：预算/配置校验/跨进程事件流（12 条）
 │   ├── test_primitives_flows.py    原语：派生/hook/并发（13 条）
-│   ├── test_primitives_resources.py 原语：上下文裁剪/资源感知/排队（5 条）
+│   ├── test_primitives_resources.py 原语：compact/资源感知/排队/心跳（9 条）
 │   ├── test_primitives_lifecycle.py 原语：restart/每 worker 事实（3 条）
 │   ├── test_primitives_state.py    原语：状态/续跑/运行图（11 条）
 │   ├── test_primitives_guards.py   原语：scope/停止/快照/重试（8 条）
-│   ├── test_tools.py           工具：registry/provider/重试/成本（12 条）
+│   ├── test_tools.py           工具：registry/provider/重试/成本（15 条）
 │   ├── test_policy.py          安全：policy/scope/脱敏/备份（8 条）
-│   ├── test_cli.py             CLI：--check/--inspect/--runs/--prune（6 条）
-│   ├── test_server.py          HTTP/SSE/metrics/鉴权/限流/停止（5 条）
+│   ├── test_cli.py             CLI：--check/--inspect/--runs/--prune（7 条）
+│   ├── test_server.py          HTTP/SSE/metrics/鉴权/限流/停止（9 条）
 │   ├── test_subproc.py         受限子进程：超时/脱敏/内存上限（3 条）
 │   └── test_layering.py        依赖方向 / 领域词 / 唯一循环 / 单文件 ≤500 行
 ├── skills/                     技能目录（数据）
@@ -502,10 +502,10 @@ python -m forchat --serve 8000
 | `GET /health` | 存活 |
 | `GET /runs` | 运行列表（同 `--runs`） |
 | `POST /runs` | `{"workflow": "minimal", "goal": "..."}` → `202 {"id", "run_dir"}` |
-| `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告 |
+| `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告、卡死 worker（`stuck`） |
 | `GET /runs/<id>/graph` | **运行图**：`{"nodes":[{id,template,depth,status,task,summary,tokens}], "edges":[{from,to}]}`，前端画网状结构用 |
 | `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
-| `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本（带 `FORCHAT_METRICS_TTL` 缓存，默认 5s） |
+| `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本/卡死 worker（带 `FORCHAT_METRICS_TTL` 缓存，默认 5s） |
 | `POST /runs/<id>/stop` | 请求停止该运行里所有在跑的 worker（协作式） |
 
 鉴权与限流：
@@ -535,6 +535,8 @@ python -m forchat --serve 8000
 
 **崩溃恢复（自动）**：`--resume` 现在会从每轮快照恢复整棵树——
 
+- 快照是**追加式**的 `workers/<id>.jsonl`：每轮只追加新增消息（compact/restart 时写一条 `reset`），
+  不再整段重写，避免长会话的 O(n²) IO；
 - 没有 `worker_done` 的 worker 若有快照，会从断点继续，**深的先恢复**（父的后续轮次才能看到子报告）；
 - 根自己中断且快照存在 → 直接续跑根（保住它自己的对话与未完成的决策），不再新起一个根；
 - 根没中断 → 起一个新根，历史 worker 作为只读上下文。

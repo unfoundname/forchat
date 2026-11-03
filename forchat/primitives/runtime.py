@@ -91,6 +91,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         self._restored: list[str] = []
         self._interrupted: list[str] = []
         self._root_id: str | None = None
+        self._beats: dict[str, float] = {}          # worker_id -> 最后一次心跳时间
         self._restore()
     def _deadline_exceeded(self) -> bool:
         return self.run_deadline is not None and time.time() > self.run_deadline
@@ -195,9 +196,30 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
                 scope=chosen_scope,
             )
             self.workers[worker_id] = worker
+            self._beats[worker_id] = time.time()
         self.log.append("worker_created", worker_id=worker_id, template=template, depth=depth,
                         parent=parent.id if parent else None, task=task, scope=chosen_scope)
         return worker
+
+    # ------------------------------------------------------------------ 心跳
+    def _beat(self, worker_id: str) -> None:
+        with self._lock:
+            self._beats[worker_id] = time.time()
+
+    def stuck_workers(self, threshold_seconds: float = 300.0) -> list[dict[str, Any]]:
+        """超过 threshold 没有心跳的 running/queued worker——服务端和前端用它发现卡死。"""
+        now = time.time()
+        with self._lock:
+            result: list[dict[str, Any]] = []
+            for wid, item in self.workers.items():
+                if item.status not in ("running", "queued"):
+                    continue
+                beat = self._beats.get(wid)
+                idle = None if beat is None else round(now - beat, 1)
+                if idle is None or idle >= threshold_seconds:
+                    result.append({"worker_id": wid, "status": item.status,
+                                   "idle_seconds": idle})
+            return result
 
     # ------------------------------------------------------------------ 资源感知
     def resources(self) -> dict[str, Any]:

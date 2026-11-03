@@ -116,7 +116,7 @@ class StateMixin:
         root = self.workers.get(self._root_id) if self._root_id else None
         targets = [
             item for item in self.workers.values()
-            if item.status == "interrupted" and self._worker_state_path(item.id).is_file()
+            if item.status == "interrupted" and self.load_worker_state(item.id) is not None
         ]
         targets.sort(key=lambda item: -item.depth)      # 深的先恢复，父的后续轮次才能看到子报告
 
@@ -161,33 +161,71 @@ class StateMixin:
         }
     # ------------------------------------------------------------------ 执行快照
     def _worker_state_path(self, worker_id: str) -> Path:
+        return self.dir / "workers" / f"{worker_id}.jsonl"
+
+    def _legacy_state_path(self, worker_id: str) -> Path:
         return self.dir / "workers" / f"{worker_id}.json"
+
     def _save_worker_state(
         self, worker: WorkerInstance, messages: list[dict], round_no: int, reported: bool
     ) -> None:
-        """每轮落一次快照：messages + 轮次 + 是否已 report。崩溃后可以接着跑。"""
+        """追加式快照：每轮只写"新增的消息"，不再整段重写（避免 O(n²) IO）。
+
+        compact / restart 会让 messages 变小或换掉，此时写一条 `reset` 记录。
+        """
         path = self._worker_state_path(worker.id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "worker_id": worker.id,
-            "template": worker.template,
-            "task": worker.task,
-            "round": round_no,
-            "reported": reported,
-            "messages": messages,
-        }
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
-        tmp.replace(path)
+        offset = getattr(worker, "snapshot_offset", 0)
+        if offset < 0 or offset > len(messages):
+            record = {"op": "reset", "round": round_no, "reported": reported,
+                      "messages": messages}
+        else:
+            record = {"op": "append", "round": round_no, "reported": reported,
+                      "messages": messages[offset:]}
+        worker.snapshot_offset = len(messages)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            handle.flush()
+
+    def load_worker_state(self, worker_id: str) -> dict[str, Any] | None:
+        """重放追加式快照，重建 messages / round / reported。"""
+        path = self._worker_state_path(worker_id)
+        if path.is_file():
+            messages: list[dict] = []
+            round_no = 0
+            reported = False
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("op") == "reset":
+                    messages = list(record.get("messages") or [])
+                else:
+                    messages.extend(record.get("messages") or [])
+                round_no = int(record.get("round", round_no))
+                reported = bool(record.get("reported", reported))
+            return {"messages": messages, "round": round_no, "reported": reported}
+
+        legacy = self._legacy_state_path(worker_id)
+        if legacy.is_file():
+            try:
+                return json.loads(legacy.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+        return None
+
     def resume_worker(self, worker_id: str) -> WorkerInstance:
         """从快照继续一个已经中断/失败的 worker（同一 run 目录、追加事件）。"""
-        path = self._worker_state_path(worker_id)
-        if not path.is_file():
-            raise KeyError(f"没有 {worker_id} 的执行快照：{path}")
+        state = self.load_worker_state(worker_id)
+        if state is None:
+            raise KeyError(f"没有 {worker_id} 的执行快照")
         worker = self.workers.get(worker_id)
         if worker is None:
             raise KeyError(f"这个 run 里没有 worker {worker_id}")
-        state = json.loads(path.read_text(encoding="utf-8"))
+        worker.snapshot_offset = len(state.get("messages") or [])
         if self.run_deadline is None:
             self.run_deadline = time.time() + self.max_wall_seconds
         self.log.append("worker_resumed", worker_id=worker_id, round=state.get("round", 0))

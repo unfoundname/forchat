@@ -256,11 +256,47 @@ def test_compact_archive_retention_configurable() -> None:
     assert runtime.log.query(type="context_compacted")
 
 
+def test_stuck_worker_detection() -> None:
+    """心跳超时的 running/queued worker 会被 stuck_workers 标出来。"""
+    import time
+
+    from forchat.primitives.types import WorkerInstance
+
+    workflow = WorkflowDef.load(MINIMAL)
+    runtime = Runtime(workflow, FakeProvider(TemplateResponder({})), tmpdir())
+    worker = WorkerInstance(id="n001-root", template="root", task="任务", status="running")
+    runtime.workers[worker.id] = worker
+    runtime._beats[worker.id] = time.time() - 100
+
+    stuck = runtime.stuck_workers(threshold_seconds=30)
+    assert stuck and stuck[0]["worker_id"] == "n001-root"
+    assert stuck[0]["idle_seconds"] >= 30
+
+    runtime._beat(worker.id)
+    assert runtime.stuck_workers(threshold_seconds=30) == []
+
+    worker.status = "done"
+    assert runtime.stuck_workers(threshold_seconds=0.0) == []
+
+
+def test_heartbeat_recorded_during_run() -> None:
+    """正常跑一轮也会留下心跳，服务端据此判断卡死。"""
+    workflow = WorkflowDef.load(MINIMAL)
+    provider = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("report", {"summary": "ok"})])]})
+    )
+    runtime = Runtime(workflow, provider, tmpdir())
+    runtime.start("任务")
+    assert runtime._beats.get("n001-root") is not None
+
+
 def main() -> int:
     checks = [
         ("长会话 compact 归档", test_context_trimmed_for_long_sessions),
         ("compact 优先 LLM 摘要", test_compact_uses_llm_summary_when_available),
         ("compact 归档保留配置", test_compact_archive_retention_configurable),
+        ("stuck 检测", test_stuck_worker_detection),
+        ("运行期心跳", test_heartbeat_recorded_during_run),
         ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
         ("资源余量可见", test_resources_visible_to_worker),
         ("预算低时裁剪收紧", test_context_trim_tightens_when_budget_low),

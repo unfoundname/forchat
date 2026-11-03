@@ -230,8 +230,13 @@ def test_resume_worker_from_snapshot() -> None:
     root = runtime.start("任务")
 
     assert root.status == "failed", root.status
-    snapshot = run_dir / "workers" / "n001-root.json"
+    snapshot = run_dir / "workers" / "n001-root.jsonl"
     assert snapshot.is_file(), list((run_dir / "workers").iterdir())
+    records = [json.loads(line) for line in snapshot.read_text(encoding="utf-8").splitlines()]
+    assert records and all(record["op"] in ("append", "reset") for record in records)
+    # 第一条要带初始上下文，之后每轮只追加新增（通常 2 条）
+    assert len(records[0]["messages"]) >= 2
+    assert all(len(record["messages"]) <= 3 for record in records[1:]), records
 
     second = FakeProvider(
         TemplateResponder({"root": [tool_chunks([("report", {"summary": "断点续跑完成"})])]})

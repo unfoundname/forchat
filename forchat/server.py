@@ -145,6 +145,7 @@ class RunManager:
         workers = sum(int(item["workers"] or 0) for item in runs)
         tokens = sum(int(item["tokens"] or 0) for item in runs)
         cost = sum(float(item["cost_usd"] or 0) for item in runs)
+        stuck = sum(len(rt.stuck_workers()) for rt in list(self._runtimes.values()))
         text = (
             "# HELP forchat_runs_total Total runs known to this server.\n"
             "# TYPE forchat_runs_total gauge\n"
@@ -161,6 +162,9 @@ class RunManager:
             "# HELP forchat_cost_usd_total Estimated cost across known runs.\n"
             "# TYPE forchat_cost_usd_total gauge\n"
             f"forchat_cost_usd_total {cost:.6f}\n"
+            "# HELP forchat_stuck_workers Live workers without a recent heartbeat.\n"
+            "# TYPE forchat_stuck_workers gauge\n"
+            f"forchat_stuck_workers {stuck}\n"
         )
         self._metrics_cache = (now, text)
         return text
@@ -179,6 +183,8 @@ class RunManager:
         report = log.query(type="report")
         latest = report[-1].get("report") if report else None
         thread = self._threads.get(run_dir.name)
+        runtime = self._runtimes.get(run_dir.name)
+        stuck = runtime.stuck_workers() if runtime is not None else []
         return {
             "id": run_dir.name,
             "status": (last or {}).get("status", "running"),
@@ -187,6 +193,7 @@ class RunManager:
             "cost_usd": (last or {}).get("total_cost_usd"),
             "elapsed": (last or {}).get("elapsed"),
             "alive": bool(thread and thread.is_alive()),
+            "stuck": stuck,
             "last_report": latest,
         }
 

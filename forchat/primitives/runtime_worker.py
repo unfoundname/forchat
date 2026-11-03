@@ -56,6 +56,7 @@ class WorkerMixin:
             ),
         }
         messages[:] = head + [note] + selected
+        worker.snapshot_offset = -1        # 对话被压缩过，下一次快照写 reset
         self.log.append(
             "context_compacted",
             worker_id=worker.id,
@@ -203,6 +204,7 @@ class WorkerMixin:
         if resume:
             # 断点续跑：从快照里的 messages 继续；轮次清零（max_rounds 是"单次会话"的闸）
             messages = resume.get("messages") or messages
+            worker.snapshot_offset = len(messages)
             rnd = 0
             reported = bool(resume.get("reported", False))
             self.log.append("worker_snapshot_loaded", worker_id=worker.id,
@@ -285,6 +287,7 @@ class WorkerMixin:
                 }
             )
             for call in calls:
+                self._beat(worker.id)                     # 工具执行前也算活着
                 try:
                     result = self._execute_tool(worker, tpl, call, messages)
                 except Exception as exc:                 # noqa: BLE001
@@ -303,6 +306,7 @@ class WorkerMixin:
                 worker.report = None
                 last_text = ""
                 last_charge = time.time()
+                worker.snapshot_offset = -1    # 新会话，快照要 reset
                 self.log.append("worker_restarted", worker_id=worker.id, task=worker.task[:120])
                 continue
             if worker.report is not None:
@@ -362,6 +366,7 @@ class WorkerMixin:
         stop_event = self._stop_events.setdefault(worker.id, threading.Event())
 
         for chunk in self.provider.stream(self.model, messages, self._tool_specs(tpl)):
+            self._beat(worker.id)
             if stop_event.is_set():
                 # 协作式取消：只能做到"下一个分片到达时停"，在途网络请求没法硬杀
                 self.log.append("worker_stop_requested", worker_id=worker.id, round=rnd)
