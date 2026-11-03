@@ -28,6 +28,7 @@ ForChat/
 ├── examples/
 │   ├── workflows/minimal/      最小 workflow 包（workflow.json + prompts/）
 │   ├── workflows/delivery/     交付示例：coder 落盘 → hook 派生 reviewer → root 用 git 核对
+│   ├── workflows/worktree/     worktree 并行示例：两个 coder 各建 worktree + 分支 + 提交
 │   ├── run_demo.py             端到端自检（假 provider，无需 key）
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
@@ -163,6 +164,16 @@ provider 的两个硬参数（真模型）：
 | `FORCHAT_MAX_TOKENS` | 8192 | 单次响应上限；thinking 也吃这个额度，太小会截断工具参数 |
 
 `--inspect` 的摘要带一行合计（总 token、总耗时、各状态计数）。
+
+## worktree 并行（示例）
+
+`examples/workflows/worktree` 演示"一个 root + 多个隔离分支"的最小闭环：
+
+- worktree 统一放在 `<项目根>/.worktrees/<名字>`（已 gitignore），分支名 `feat-<名字>`；
+- coder 用 `git` 工具建 worktree、`write_file` 落盘、再 `git cwd=.worktrees/<名字>` 提交；
+- root 用 `git worktree list` + `git show --name-only` 核对隔离性，然后 report。
+
+真跑过一次：两个 coder 并行（`wait=false`）各自提交 `1fb13b4` / `42bf46b`，主工作区未被触碰。
 
 ## 续跑
 

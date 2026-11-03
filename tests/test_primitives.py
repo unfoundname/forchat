@@ -842,6 +842,45 @@ def test_truncated_response_is_recorded() -> None:
     assert "写到一半" in root.report.summary
 
 
+def test_policy_blocks_write_file_escape() -> None:
+    """运行时护栏对 write_file 同样生效：越界写被拒且文件不产生。"""
+    from forchat import registry, tools  # noqa: F401  触发注册
+    from forchat.policy import Policy
+    from forchat.tool_bridge import build
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["write_file", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent, known_tools={"write_file"})
+
+    root_dir = tmpdir()
+    escape = root_dir.parent / "escape.txt"
+    if escape.is_file():
+        escape.unlink()
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("write_file", {"path": str(escape), "content": "x"})]),
+                tool_chunks([("report", {"summary": "被拒后收尾"})]),
+            ]
+        }
+    )
+    runtime = Runtime(
+        workflow,
+        FakeProvider(responder),
+        root_dir,
+        external_tools=build(),
+        guard=Policy(root_dir).check,
+    )
+    runtime.start("写越界文件")
+
+    denied = runtime.log.query(type="tool_denied")
+    assert denied and "越界" in denied[0]["reason"], denied
+    assert not escape.is_file()
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -885,6 +924,7 @@ def main() -> int:
         ("write_file 工具", test_write_file_tool),
         ("git 白名单", test_git_tool_whitelist),
         ("截断响应被记录", test_truncated_response_is_recorded),
+        ("护栏拦截越界写入", test_policy_blocks_write_file_escape),
     ]
     failed = 0
     for name, fn in checks:

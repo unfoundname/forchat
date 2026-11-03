@@ -22,19 +22,24 @@ TIMEOUT = 60
                 "用于建分支、加 worktree、提交、看 diff。不要用它跑任意 shell。",
     params={
         "args": "git 子命令与参数，例如 \"status --short\"、\"worktree add ../wt-a -b feat-a\"",
+        "cwd": "在哪个目录执行（worktree 内提交时用），默认当前目录",
     },
 )
-def git(args: str) -> str:
+def git(args: str, cwd: str = "") -> str:
     parts = [part for part in args.split() if part]
     if not parts:
         return f"错误：需要参数，可用子命令：{', '.join(sorted(ALLOWED))}"
     if parts[0] not in ALLOWED:
         return f"错误：子命令 {parts[0]} 不在白名单，可用：{', '.join(sorted(ALLOWED))}"
 
+    work_dir = Path(cwd).resolve() if cwd else Path.cwd()
+    if not work_dir.is_dir():
+        return f"错误：目录不存在 {work_dir}"
+
     try:
         proc = subprocess.run(
             ["git", *parts],
-            cwd=Path.cwd(),
+            cwd=work_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
