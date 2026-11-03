@@ -55,7 +55,8 @@ def test_leaf_worker_runs_in_subprocess() -> None:
         os.environ.pop("FORCHAT_CHILD_SCRIPT", None)
 
     coder = runtime.workers["n002-coder"]
-    assert coder.status == "done", coder.status
+    detail = runtime.log.query(type="worker_error")
+    assert coder.status == "done", (coder.status, coder.report, detail)
     assert coder.report.summary == "子进程完成"
     assert (run_dir / "workers" / "n002-coder.result.json").is_file()
     assert root.status == "done"
