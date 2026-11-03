@@ -15,7 +15,7 @@ from .types import Budget
 BUILTIN_TOOLS = {
     "spawn", "report", "read_state", "write_note", "write_artifact",
     "read_worker_report", "wait_workers", "stop_worker",
-    "restart", "write_fact", "read_facts", "write_contract", "read_contracts",
+    "restart", "write_fact", "read_facts", "write_contract", "read_contracts", "verify_contract",
 }
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {
@@ -24,7 +24,7 @@ _LIMIT_KEYS = {
 }
 _WORKER_KEYS = {
     "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks",
-    "scope", "retries", "require_checks",
+    "scope", "retries", "require_checks", "require_contracts",
 }
 
 
@@ -45,6 +45,7 @@ class WorkerTemplate:
     scope: list[str] = field(default_factory=list)   # 模板级默认授权范围；空 = 继承父 worker
     retries: int = 0                                 # 仅对"瞬时错误"重跑该 worker，默认 0
     require_checks: bool = False                     # true = report 前必须 run_checks 全 PASS
+    require_contracts: bool = False                  # true = report 前必须所有契约 hash+checks 通过
 
 
 @dataclass
@@ -230,6 +231,10 @@ class WorkflowDef:
         if not isinstance(require_checks, bool):
             errors.append(f"worker {name} 的 require_checks 必须是布尔值")
 
+        require_contracts = spec.get("require_contracts", False)
+        if not isinstance(require_contracts, bool):
+            errors.append(f"worker {name} 的 require_contracts 必须是布尔值")
+
         try:
             budget = Budget.from_dict(spec.get("budget"))
         except ValueError as exc:
@@ -266,5 +271,6 @@ class WorkflowDef:
                 scope=[str(s) for s in (spec.get("scope") or [])],
                 retries=int(spec.get("retries") or 0),
                 require_checks=bool(spec.get("require_checks", False)),
+                require_contracts=bool(spec.get("require_contracts", False)),
             )
         return errors

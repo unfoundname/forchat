@@ -174,15 +174,35 @@ TOOL_SPECS: dict[str, dict] = {
         "function": {
             "name": "write_contract",
             "description": "冻结一条跨模块契约（接口签名/数据格式/命令约定），写进运行状态并注入所有 agent 的提示词，"
-                           "不会被 compact 抹掉。默认写一次后不能再改，要改必须 replace=true。",
+                           "不会被 compact 抹掉。默认写一次后不能再改，要改必须 replace=true。"
+                           "可附带可执行 checks；模板开 require_contracts 时 report 前必须全部 PASS。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "key": {"type": "string", "description": "契约名，例如 'GET /api/videos 响应'"},
                     "content": {"type": "string", "description": "契约内容（字段/类型/示例）"},
+                    "checks": {
+                        "type": "array",
+                        "description": "机器校验脚本列表，格式同 run_checks："
+                                       "[{name, script, args?, cwd?}]；约定只能放 .py",
+                        "items": {"type": "object"},
+                    },
                     "replace": {"type": "boolean", "description": "确实要改时传 true"},
                 },
                 "required": ["key", "content"],
+            },
+        },
+    },
+    "verify_contract": {
+        "type": "function",
+        "function": {
+            "name": "verify_contract",
+            "description": "机器校验冻结契约：重算内容 hash，跑契约里的 checks；返回 PASS/FAIL。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "只校验某一条；空 = 全部"},
+                },
             },
         },
     },

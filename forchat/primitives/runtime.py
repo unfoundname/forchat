@@ -100,6 +100,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, Re
         self._hard_stopped = False
         self._hard_workers: set[str] = set()
         self.hard_stop_count = 0
+        self.contract_violation_count = 0
         self.run_deadline: float | None = None
         self.scheduler = Scheduler(
             max_concurrent or int(workflow.limits.get("max_concurrent", 2))
@@ -254,6 +255,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, Re
                 ),
                 budget_limit=self.max_total_tokens,
                 budget_hard_stops=self.hard_stop_count,
+                contract_violations=self.contract_violation_count,
                 **({"total_cost_usd": round(self.total_cost_usd, 6)}
                    if self.pricing is not None else {}),
                 scheduler=self.scheduler.stats(),

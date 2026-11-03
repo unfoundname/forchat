@@ -36,7 +36,8 @@
 - **续跑（resume）**：同一 run 目录再次运行。历史 worker 只读、序号接着涨，根 worker 的系统提示里带历史摘要。
 - **中断（interrupted）**：上次进程崩溃/被杀时没有 `worker_done` 的 worker；`--resume` 会从快照自动恢复整棵树（深的先恢复，根有快照则续跑根），`--resume-worker` 可单点恢复。
 - **restart**：worker 自己调用、重启自己：同一个 WorkerInstance、清空对话、事实保留（同模板/范围/任务，可换任务）；上下文涣散时用它。
-- **事实（fact）**：跨 agent 共享的硬结论，落盘 `state.json["facts"]`，新 agent 系统提示里自动带（上限 20k 字符）。
+- **事实（fact）**：每个 worker 实例一份硬结论，落盘 `facts/<worker-id>.json`，重启/新 agent 的系统提示里自动带（上限 20k 字符）；不是全 run 共享。
+- **契约（contract）**：`write_contract` 冻结接口约定并注入所有提示词；可带 `checks`，模板 `require_contracts` 时 `report` 前机器校验内容 hash + checks，失败拒绝报告。
 - **成本**：按 `pricing.json` 的价目表把 prompt/completion token 换算成美元；没有价目表时明确为"未知"，不记 0。
 - **围栏（fence）**：能力限制，优先于事后熔断。递归靠 `can_spawn` 为空来杜绝，不是靠层数。
 - **授权范围（scope）**：worker 只能修改的目录列表（相对项目根）。空 = 整个项目根；由父 worker 在 `spawn(paths=...)` 时授予，不能超出自己范围。

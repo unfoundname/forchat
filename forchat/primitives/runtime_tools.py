@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -60,6 +61,7 @@ class ToolsMixin:
             "read_facts": self._tool_read_facts,
             "write_contract": self._tool_write_contract,
             "read_contracts": self._tool_read_contracts,
+            "verify_contract": self._tool_verify_contract,
         }.get(name)
         context = (
             self.worker_context(worker.id)
@@ -191,28 +193,81 @@ class ToolsMixin:
         key = str(args.get("key") or "").strip()
         content = str(args.get("content") or "").strip()
         replace = bool(args.get("replace", False))
+        checks = args.get("checks") or []
         if not key or not content:
             return "错误：write_contract 需要 key 与 content"
+        if not isinstance(checks, list) or any(not isinstance(item, dict) for item in checks):
+            return "错误：checks 必须是对象数组（格式同 run_checks）"
         contracts = self.state.setdefault("contracts", {})
         existing = contracts.get(key) or {}
         if existing and not replace:
             return (f"错误：契约 {key} 已冻结（v{existing.get('version', 1)}）；"
                     "确实要改请传 replace=true（会记版本）")
         version = int(existing.get("version", 0)) + 1
-        contracts[key] = {"content": content[:8000], "version": version}
+        stored = content[:8000]
+        contracts[key] = {
+            "content": stored,
+            "version": version,
+            "sha256": hashlib.sha256(stored.encode("utf-8")).hexdigest(),
+            "checks": checks,
+        }
         self._save_state()
         self.log.append("contract_written", worker_id=worker.id, key=key,
-                        version=version, replace=bool(existing))
-        return f"契约 {key} v{version} 已冻结（会注入所有 agent 的提示词，compact 也抹不掉）"
+                        version=version, replace=bool(existing), checks=len(checks))
+        return (f"契约 {key} v{version} 已冻结（checks={len(checks)}；"
+                "会注入所有 agent 的提示词，compact 也抹不掉）")
 
     def _tool_read_contracts(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         contracts = self.state.get("contracts") or {}
         if not contracts:
             return "（还没有冻结契约）"
         return "\n".join(
-            f"- {key} (v{item.get('version', 1)}): {item.get('content', '')}"
+            f"- {key} (v{item.get('version', 1)}, checks={len(item.get('checks') or [])}): "
+            f"{item.get('content', '')}"
             for key, item in contracts.items()
         )
+
+    def _verify_contracts(self, worker: WorkerInstance, tpl: WorkerTemplate,
+                          only: str | None = None) -> str | None:
+        """校验契约：内容 hash 未被改写 + 契约里的 checks 全部 PASS。"""
+        contracts = self.state.get("contracts") or {}
+        targets = {k: v for k, v in contracts.items() if only is None or k == only}
+        if not targets:
+            return "错误：没有冻结契约（或指定的 key 不存在）"
+        runner = self.external.get("run_checks")
+        for key, item in targets.items():
+            content = str(item.get("content", ""))
+            expected = item.get("sha256")
+            actual = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            if not expected or actual != expected:
+                self.contract_violation_count += 1
+                self.log.append("contract_violation", worker_id=worker.id, key=key,
+                                reason="hash")
+                return f"错误：契约 {key} 内容 hash 不匹配（被改写），拒绝"
+            checks = item.get("checks") or []
+            if not checks:
+                if getattr(tpl, "require_contracts", False):
+                    self.contract_violation_count += 1
+                    self.log.append("contract_violation", worker_id=worker.id, key=key,
+                                    reason="no_checks")
+                    return f"错误：契约 {key} 没有可执行 checks，无法机器校验"
+                continue
+            if runner is None:
+                return "错误：没有可用的 run_checks 执行器，无法校验契约 checks"
+            result = str(runner[1](json.dumps({"checks": checks})))
+            if not result.startswith("验收总结果：PASS"):
+                self.contract_violation_count += 1
+                self.log.append("contract_violation", worker_id=worker.id, key=key,
+                                reason="checks")
+                return f"错误：契约 {key} checks 未通过：{result[:300]}"
+            self.log.append("contract_verified", worker_id=worker.id, key=key,
+                            version=item.get("version"), checks=len(checks))
+        return None
+
+    def _tool_verify_contract(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        only = str(args.get("key") or "").strip() or None
+        problem = self._verify_contracts(worker, tpl, only)
+        return problem or "契约校验：PASS（hash 与 checks 全部通过）"
 
     def _tool_wait_workers(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         ids = [str(i) for i in args.get("worker_ids") or []]
@@ -276,6 +331,11 @@ class ToolsMixin:
             self.log.append("report_rejected", worker_id=worker.id, reason="checks")
             return ("错误：这个 worker 要求先跑 run_checks 且全部 PASS 才能 report；"
                     "先跑检查，别直接交报告")
+        if getattr(tpl, "require_contracts", False):
+            problem = self._verify_contracts(worker, tpl)
+            if problem:
+                self.log.append("report_rejected", worker_id=worker.id, reason="contract")
+                return problem
         declared = [str(a) for a in args.get("artifacts") or []]
         # 自己 write_artifact 过的文件自动进索引，模型不用再手抄一遍路径
         merged = list(dict.fromkeys([*worker.artifacts, *declared]))

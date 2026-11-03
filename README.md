@@ -247,6 +247,11 @@ agent 在系统提示里都能看到它，不必靠对话记忆。
 agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许改，要改必须 `replace=true`（记版本号）。
 长程跨模块集成时用它防"摘要丢细节 → 接口漂移"。
 
+**机器校验**：契约可带 `checks`（格式同 `run_checks`），并自动记录内容 sha256；模板写
+`"require_contracts": true` 后，`report` 前会**重新算 hash + 跑 checks**，任一失败就拒绝报告
+（事件 `contract_violation` / `contract_verified`，metrics `forchat_contract_violations_total`）。
+也可以随时调 `verify_contract` 主动校验。这样"契约"不只是提示词，而是可被机器判定的门禁。
+
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 
 **轮数默认不限**：协调型 worker 跑几十上百轮是正常的，真正的闸是预算（tokens / wall_seconds）
