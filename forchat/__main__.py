@@ -30,9 +30,42 @@ USAGE = """用法:
   python -m forchat --skills    列出已加载技能
   python -m forchat --mcp       连接 mcp_servers.json 里的服务端
   python -m forchat --inspect <run-dir>   复查一次历史运行
+  python -m forchat --runs      列出历史运行（状态/worker 数/token/耗时）
   python -m forchat --check <workflow>   只校验 workflow 配置，不跑模型
   python -m forchat --resume <run-dir> [目标]   在同一个运行目录上继续推进
 """
+
+
+def _list_runs(base: Path | None = None, limit: int = 20) -> int:
+    """列出历史运行：状态、worker 数、token、耗时。不需要 API key。"""
+    root = Path(base or ".runs")
+    if not root.is_dir():
+        print(f"（没有 {root} 目录）")
+        return 0
+
+    runs = [p for p in root.iterdir() if p.is_dir() and (p / "events.jsonl").is_file()]
+    runs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    if not runs:
+        print(f"（{root} 下没有运行记录）")
+        return 0
+
+    print(f"{'run':38} {'status':8} {'workers':>7} {'tokens':>16} {'耗时(s)':>8}")
+    for run_dir in runs[:limit]:
+        log = EventLog(run_dir)
+        finished = log.query(type="run_finished")
+        last = finished[-1] if finished else None
+        if last is None:
+            print(f"{run_dir.name:38} {'running':8} {'-':>7} {'-':>16} {'-':>8}")
+            continue
+        limit_tokens = last.get("budget_limit") or "-"
+        tokens = f"{last.get('total_tokens', '-')}/{limit_tokens}"
+        print(
+            f"{run_dir.name:38} {str(last.get('status', '-')):8} "
+            f"{last.get('workers', '-'):>7} {tokens:>16} {last.get('elapsed', '-'):>8}"
+        )
+    if len(runs) > limit:
+        print(f"...（共 {len(runs)} 次运行，只显示最近 {limit} 次）")
+    return 0
 
 
 def _check(path: Path) -> int:
@@ -201,6 +234,8 @@ def main() -> None:
         print(f"已连接 {len(clients)} 个服务端" if clients else "没有连上任何 MCP 服务端")
         close_all()
         return
+    if args and args[0] == "--runs":
+        raise SystemExit(_list_runs())
     if args and args[0] == "--inspect":
         if len(args) < 2:
             print("--inspect 需要一个运行目录，例如 .runs/minimal-20261103-130000")

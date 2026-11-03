@@ -73,11 +73,46 @@ def test_inspect_missing_dir_returns_2() -> None:
     assert "没有事件流" in buffer.getvalue()
 
 
+def test_runs_lists_history() -> None:
+    """--runs：列出历史运行的状态/worker 数/token/耗时。"""
+    from forchat.__main__ import _list_runs
+    from forchat.primitives.store import EventLog
+
+    base = tmpdir() / ".runs"
+    done = base / "run-a"
+    EventLog(done).append(
+        "run_finished", status="done", workers=3, total_tokens=1234,
+        budget_limit=5000, elapsed=12.5,
+    )
+    (base / "empty").mkdir()
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = _list_runs(base)
+    output = buffer.getvalue()
+
+    assert code == 0
+    assert "run-a" in output and "done" in output
+    assert "1234/5000" in output, output
+
+
+def test_runs_missing_dir() -> None:
+    from forchat.__main__ import _list_runs
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = _list_runs(tmpdir() / "no-runs")
+    assert code == 0
+    assert "没有" in buffer.getvalue()
+
+
 def main() -> int:
     checks = [
         ("--check 进程级退出码", test_check_cli_exit_codes),
         ("--inspect 输出树/预算/最近事件", test_inspect_prints_tree_budget_and_recent),
         ("--inspect 缺失目录返回 2", test_inspect_missing_dir_returns_2),
+        ("--runs 列出历史", test_runs_lists_history),
+        ("--runs 缺失目录", test_runs_missing_dir),
     ]
     return run("CLI 自检", checks)
 
