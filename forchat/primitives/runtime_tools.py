@@ -5,7 +5,6 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
 from .runtime_specs import TOOL_SPECS
 from .types import Report, WorkerInstance

@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _support import MINIMAL, run, tmpdir
 
-from forchat.primitives import Runtime, WorkflowDef, WorkflowError
+from forchat.primitives import Runtime, WorkflowDef
 from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 
 

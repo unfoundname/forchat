@@ -6,9 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .store import EventLog
 from .types import Report, WorkerInstance
-from .workflow import WorkflowDef
 
 
 class StateMixin:

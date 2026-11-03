@@ -1,8 +1,6 @@
 """PromptMixin：构造每个 worker 的初始消息与兜底报告。"""
 from __future__ import annotations
 
-from typing import Any
-
 from .types import Report, WorkerInstance
 from .workflow import WorkerTemplate
 
