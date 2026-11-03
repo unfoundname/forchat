@@ -1,0 +1,25 @@
+{
+  "name": "parallel",
+  "version": 1,
+  "entry": "root",
+  "limits": {
+    "max_concurrent": 3,
+    "max_depth": 2,
+    "max_workers": 5,
+    "max_wall_seconds": 900
+  },
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": ["coder"],
+      "tools": ["spawn", "wait_workers", "report", "read", "run_python", "read_worker_report", "read_state"],
+      "budget": {"tokens": 30000, "wall_seconds": 600}
+    },
+    "coder": {
+      "role_file": "prompts/coder.md",
+      "can_spawn": [],
+      "tools": ["write_file", "read", "run_python", "report", "read_state"],
+      "budget": {"tokens": 30000, "wall_seconds": 600}
+    }
+  }
+}

@@ -13,7 +13,8 @@ from . import hooks
 from .types import Budget
 
 BUILTIN_TOOLS = {
-    "spawn", "report", "read_state", "write_note", "write_artifact", "read_worker_report",
+    "spawn", "report", "read_state", "write_note", "write_artifact",
+    "read_worker_report", "wait_workers",
 }
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {"max_concurrent", "max_depth", "max_workers", "max_wall_seconds"}

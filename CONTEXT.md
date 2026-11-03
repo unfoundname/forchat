@@ -18,6 +18,7 @@
 - **report**：worker 实例的结构化交付物，同时是**唯一的完成信号**——调用它，本轮即结束。
 - **轮数**：默认不限。协调型 worker 跑几十上百轮是常态，真正的闸是预算和整轮墙钟；需要时在模板里写 `max_rounds`。
 - **回看**：父 worker 看子 worker 用 `read_worker_report`（读结构化报告），不要翻事件流。
+- **汇合**：`spawn(wait=false)` 是异步的，必须用 `wait_workers` 汇合后再做验收/报告；不等就报告等于交空卷。
 - **hook**：生命周期挂载点，两类语义不同的东西：
   - `action` hook：确定性动作（snapshot、notify），不派生 worker；
   - `spawn` hook：派生新 worker（"完成后自动派 review"）。

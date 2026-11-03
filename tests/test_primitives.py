@@ -884,6 +884,45 @@ def test_policy_blocks_write_file_escape() -> None:
     assert not escape.is_file()
 
 
+def test_wait_workers_joins_async_branches() -> None:
+    """spawn(wait=false) 之后用 wait_workers 汇合：root 的报告必须晚于所有子 worker 完成。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["spawn", "wait_workers", "report"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    coder_reply = tool_chunks([("report", {"summary": "分支完成"})])
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks(
+                    [
+                        ("spawn", {"template": "coder", "task": "A", "wait": False}),
+                        ("spawn", {"template": "coder", "task": "B", "wait": False}),
+                    ]
+                ),
+                tool_chunks([("wait_workers", {"timeout_seconds": 30})]),
+                tool_chunks([("report", {"summary": "两个都完成"})]),
+            ],
+            "coder": [coder_reply, coder_reply],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder, delay=0.02), tmpdir())
+    root = runtime.start("等待两个分支")
+
+    coders = [w for w in runtime.workers.values() if w.template == "coder"]
+    assert len(coders) == 2 and all(w.status == "done" for w in coders)
+
+    events = runtime.log.read()
+    report_index = max(
+        i for i, e in enumerate(events)
+        if e["type"] == "report" and e.get("worker_id") == root.id
+    )
+    done_indexes = [i for i, e in enumerate(events) if e["type"] == "worker_done"]
+    assert done_indexes and max(done_indexes) < report_index
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -928,6 +967,7 @@ def main() -> int:
         ("git 白名单", test_git_tool_whitelist),
         ("截断响应被记录", test_truncated_response_is_recorded),
         ("护栏拦截越界写入", test_policy_blocks_write_file_escape),
+        ("wait_workers 汇合并行分支", test_wait_workers_joins_async_branches),
     ]
     failed = 0
     for name, fn in checks:

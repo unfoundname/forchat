@@ -31,7 +31,8 @@ ForChat/
 │   ├── workflows/worktree/     worktree 并行示例：两个 coder 各建 worktree + 分支 + 提交
 │   ├── workflows/merge/        串行合并示例：把多个 feat 分支合进 integration 分支
 │   ├── workflows/microproject/ 真项目示例：写代码 + 测试 + 自动验收
-│   └── projects/wordcount/     microproject 的真实产出（15 条断言，真跑通过）
+│   ├── workflows/parallel/     并行示例：两个 coder 同时开工，wait_workers 汇合
+│   └── projects/               microproject / parallel 的真实产出（真跑通过）
 │   ├── run_demo.py             端到端自检（假 provider，无需 key）
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
@@ -98,9 +99,9 @@ examples/workflows/minimal/
 }
 ```
 
-运行时只给模型六个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
+运行时只给模型七个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
-`read_worker_report`（父 worker 回看子报告，不用翻事件流）。
+`read_worker_report`（父 worker 回看子报告）、`wait_workers`（汇合 `spawn(wait=false)` 的异步分支）。
 
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 
@@ -205,6 +206,22 @@ py: 24 / forchat: 22 / worker: 20
 ```
 
 运行结束后 `git status` 只多出未跟踪目录，没有改动任何已有文件。
+
+## 并行开发（示例）
+
+`examples/workflows/parallel`：root 一次响应里发两个 `spawn(wait=false)`，然后 `wait_workers` 汇合，
+再亲手跑两份测试，最后 report。
+
+真跑数据（一次 `python -m forchat --workflow examples/workflows/parallel/...`）：
+
+| worker | 耗时 | tokens |
+|---|---|---|
+| root | 35.5s | 3230 |
+| coder A（stats.py + test） | 9.1s | 1297 |
+| coder B（io_utils.py + test） | 13.4s | 2088 |
+
+两个 coder 的时间重叠（串行会是 9.1 + 13.4 = 22.5s），根节点只花一次汇合。产出在
+`examples/projects/multi/`，两套测试独立复跑都是 `ALL PASS` + 退出码 0。
 
 ## 续跑
 

@@ -106,6 +106,28 @@ TOOL_SPECS: dict[str, dict] = {
             },
         },
     },
+    "wait_workers": {
+        "type": "function",
+        "function": {
+            "name": "wait_workers",
+            "description": "等待异步派出的子 worker 完成（spawn(wait=false) 之后用它汇合）。"
+                           "不传 worker_ids 时等待本 worker 的所有直接子 worker。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "要等的 worker id 列表；省略表示全部直接子 worker",
+                    },
+                    "timeout_seconds": {
+                        "type": "number",
+                        "description": "最多等多久，默认 300 秒",
+                    },
+                },
+            },
+        },
+    },
 }
 
 
@@ -148,6 +170,7 @@ class Runtime:
         self.state: dict[str, Any] = self._load_state()
         self.workers: dict[str, WorkerInstance] = {}
         self._lock = threading.RLock()
+        self._futures: dict[str, Any] = {}          # worker_id -> Future（异步分支的 join 用）
         self._seq = 0
         self.started_at = time.time()
         self._restored: list[str] = []
@@ -460,6 +483,7 @@ class Runtime:
             "write_note": self._tool_write_note,
             "write_artifact": self._tool_write_artifact,
             "read_worker_report": self._tool_read_worker_report,
+            "wait_workers": self._tool_wait_workers,
         }.get(name)
         if handler is None:
             if name not in self.external:
@@ -488,8 +512,46 @@ class Runtime:
             self._run_worker(child)          # 内联执行，不占并发槽
             summary = (child.report.summary if child.report else "")[:400]
             return f"子 worker {child.id} 已完成，status={child.status}；report: {summary}"
-        self.scheduler.submit(self._run_worker, child)
-        return f"子 worker {child.id} 已在后台启动"
+        self._submit(child)
+        return f"子 worker {child.id} 已在后台启动；用 wait_workers 汇合"
+
+    def _submit(self, child: WorkerInstance) -> None:
+        future = self.scheduler.submit(self._run_worker, child)
+        self._futures[child.id] = future
+
+    def _tool_wait_workers(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        ids = [str(i) for i in args.get("worker_ids") or []]
+        timeout = float(args.get("timeout_seconds") or 300)
+        with self._lock:
+            if not ids:
+                ids = [wid for wid, w in self.workers.items()
+                       if w.parent_id == worker.id and wid in self._futures]
+            futures = {wid: self._futures[wid] for wid in ids if wid in self._futures}
+
+        if not futures:
+            return "没有需要等待的异步子 worker"
+
+        deadline = time.time() + timeout
+        pending = dict(futures)
+        while pending and time.time() < deadline:
+            for wid, future in list(pending.items()):
+                if future.done():
+                    pending.pop(wid)
+                    continue
+            if pending:
+                time.sleep(0.05)
+
+        lines = []
+        for wid in ids:
+            target = self.workers.get(wid)
+            if target is None:
+                lines.append(f"- {wid}: 不存在")
+            elif wid in pending:
+                lines.append(f"- {wid}: 仍在运行（timeout={timeout}s）")
+            else:
+                summary = (target.report.summary if target.report else "")[:160]
+                lines.append(f"- {wid}: {target.status} — {summary or '（无报告）'}")
+        return "\n".join(lines)
 
     def _tool_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         declared = [str(a) for a in args.get("artifacts") or []]
@@ -558,7 +620,7 @@ class Runtime:
                 if entry.get("wait", False):
                     self._run_worker(child)
                 else:
-                    self.scheduler.submit(self._run_worker, child)
+                    self._submit(child)
                 continue
 
             action = hooks_mod.ACTION_HOOKS[entry["action"]]
