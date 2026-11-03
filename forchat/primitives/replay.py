@@ -121,6 +121,44 @@ class Replay:
         walk(None, "")
         return "\n".join(lines)
 
+    def graph(self) -> dict[str, Any]:
+        """给前端/可视化用的运行图：节点 + 父子边（不带时序细节）。
+
+        nodes: id / template / depth / status / task 摘要 / tokens / cost
+        edges: {from, to}——"谁派了谁"
+        """
+        done_status = {e["worker_id"]: e.get("status", "failed")
+                       for e in self.log.query(type="worker_done")}
+        reports = {e["worker_id"]: (e.get("report") or {})
+                   for e in self.log.query(type="report")}
+        finished = bool(self.log.query(type="run_finished"))
+
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
+        for event in self.log.query(type="worker_created"):
+            wid = event["worker_id"]
+            report = reports.get(wid) or {}
+            budget = report.get("budget") or {}
+            status = done_status.get(wid)
+            if status is None:
+                status = "interrupted" if finished else "running"
+            nodes.append(
+                {
+                    "id": wid,
+                    "template": event.get("template"),
+                    "depth": int(event.get("depth", 0)),
+                    "parent": event.get("parent"),
+                    "status": status,
+                    "task": str(event.get("task", ""))[:120],
+                    "summary": str(report.get("summary", ""))[:200],
+                    "tokens": (budget.get("tokens") or [0, 0])[0],
+                    "cost_usd": report.get("cost_usd"),
+                }
+            )
+            if event.get("parent"):
+                edges.append({"from": event["parent"], "to": wid})
+        return {"nodes": nodes, "edges": edges}
+
     @staticmethod
     def _format(event: dict[str, Any]) -> str:
         kind = event.get("type")

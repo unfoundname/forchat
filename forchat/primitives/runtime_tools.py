@@ -52,6 +52,10 @@ class ToolsMixin:
             "read_worker_report": self._tool_read_worker_report,
             "wait_workers": self._tool_wait_workers,
             "stop_worker": self._tool_stop_worker,
+            "fork": self._tool_fork,
+            "restart": self._tool_restart,
+            "write_fact": self._tool_write_fact,
+            "read_facts": self._tool_read_facts,
         }.get(name)
         if handler is None:
             if name not in self.external:
@@ -107,9 +111,80 @@ class ToolsMixin:
                     f"{extra}{self._resource_line()}")
         self._submit(child)
         return f"子 worker {child.id} 已在后台启动；用 wait_workers 汇合{self._resource_line()}"
-    def _submit(self, child: WorkerInstance) -> None:
-        future = self.scheduler.submit(self._run_worker, child)
+    def _submit(self, child: WorkerInstance, resume: dict | None = None) -> None:
+        child.status = "queued"
+        self.log.append("worker_queued", worker_id=child.id,
+                        pending=self.scheduler.stats()["pending"] + 1,
+                        max_concurrent=self.scheduler.max_concurrent)
+        future = self.scheduler.submit(self._run_worker, child, resume)
         self._futures[child.id] = future
+
+    def _tool_fork(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        target = self.workers.get(str(args.get("worker_id") or ""))
+        if target is None:
+            return f"错误：没有 worker {args.get('worker_id')}"
+        if target.template not in tpl.can_spawn:
+            return f"错误：{tpl.name} 不能派生 {target.template}（fork 同样受 can_spawn 约束）"
+        path = self._worker_state_path(target.id)
+        if not path.is_file():
+            return f"错误：{target.id} 还没有执行快照，无法 fork；可以改用 restart"
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return f"错误：{target.id} 的快照读不出来"
+
+        task = str(args.get("task") or f"{target.task}（fork 自 {target.id}）")
+        child = self._create_worker(target.template, task, parent=worker,
+                                    depth=worker.depth + 1, scope=target.scope or None)
+        if child is None:
+            return f"错误：fork 被资源限制拒绝{self._resource_line()}"
+        self.log.append("worker_forked", worker_id=child.id, source=target.id, by=worker.id)
+        if bool(args.get("wait", True)):
+            self._run_worker(child, resume=state)
+            summary = (child.report.summary if child.report else "")[:300]
+            return f"fork {child.id} 完成，status={child.status}；report: {summary}"
+        self._submit(child, resume=state)
+        return f"fork {child.id} 已在后台启动；用 wait_workers 汇合"
+
+    def _tool_restart(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        target = self.workers.get(str(args.get("worker_id") or ""))
+        if target is None:
+            return f"错误：没有 worker {args.get('worker_id')}"
+        if target.template not in tpl.can_spawn:
+            return f"错误：{tpl.name} 不能派生 {target.template}"
+
+        task = str(args.get("task") or target.task)
+        child = self._create_worker(target.template, task, parent=worker,
+                                    depth=worker.depth + 1, scope=target.scope or None)
+        if child is None:
+            return f"错误：restart 被资源限制拒绝{self._resource_line()}"
+        self.log.append("worker_restarted", worker_id=child.id, source=target.id, by=worker.id)
+        if bool(args.get("wait", True)):
+            self._run_worker(child)                 # 全新会话，不带旧对话
+            summary = (child.report.summary if child.report else "")[:300]
+            return f"restart {child.id} 完成，status={child.status}；report: {summary}"
+        self._submit(child)
+        return f"restart {child.id} 已在后台启动；用 wait_workers 汇合"
+
+    def _tool_write_fact(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        name = str(args.get("name") or "").strip()
+        content = str(args.get("content") or "").strip()
+        if not name or not content:
+            return "错误：write_fact 需要 name 与 content"
+        facts = self.state.setdefault("facts", {})
+        total = sum(len(str(item)) for item in facts.values()) + len(content)
+        if total > 20000:
+            return f"错误：事实库总计会到 {total} 字符，超过 20000；先精简已有事实"
+        facts[name] = content[:4000]
+        self._save_state()
+        self.log.append("fact_written", worker_id=worker.id, name=name)
+        return f"已写入事实 {name}（{len(content)} 字符，跨 agent 共享）"
+
+    def _tool_read_facts(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        facts = self.state.get("facts") or {}
+        if not facts:
+            return "（还没有事实）"
+        return "\n".join(f"- {name}: {content}" for name, content in facts.items())
     def _tool_wait_workers(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         ids = [str(i) for i in args.get("worker_ids") or []]
         timeout = float(args.get("timeout_seconds") or 300)
@@ -138,7 +213,8 @@ class ToolsMixin:
             if target is None:
                 lines.append(f"- {wid}: 不存在")
             elif wid in pending:
-                lines.append(f"- {wid}: 仍在运行（timeout={timeout}s）")
+                state = "排队中" if target.status == "queued" else "仍在运行"
+                lines.append(f"- {wid}: {state}（timeout={timeout}s）")
             else:
                 summary = (target.report.summary if target.report else "")[:160]
                 lines.append(f"- {wid}: {target.status} — {summary or '（无报告）'}")

@@ -16,7 +16,6 @@ from _support import MINIMAL, run, tmpdir
 from forchat.primitives import Runtime, WorkflowDef
 from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 
-
 def test_runtime_spawns_and_reports() -> None:
     workflow = WorkflowDef.load(MINIMAL)
     responder = TemplateResponder(
@@ -39,7 +38,6 @@ def test_runtime_spawns_and_reports() -> None:
     types = [event["type"] for event in runtime.log.read()]
     assert "spawn_rejected" not in types
     assert "worker_done" in types and types[-1] == "run_finished"
-
 
 def test_leaf_cannot_spawn() -> None:
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
@@ -68,7 +66,6 @@ def test_leaf_cannot_spawn() -> None:
     assert rejected and rejected[0]["reason"] == "not_allowed"
     assert len(runtime.workers) == 2, f"越权派生不应产生worker：{list(runtime.workers)}"
 
-
 def test_max_depth_fence() -> None:
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
     raw["limits"]["max_depth"] = 0
@@ -85,7 +82,6 @@ def test_max_depth_fence() -> None:
     runtime.start("根任务")
     assert runtime.log.query(type="spawn_rejected")[0]["reason"] == "max_depth"
     assert len(runtime.workers) == 1
-
 
 def test_max_workers_fence() -> None:
     """worker 数量上限：超出的派生被拒，不会把资源吃光。"""
@@ -139,7 +135,6 @@ def test_state_persisted_and_reloaded() -> None:
     reloaded = Runtime(workflow, FakeProvider([]), run_dir)
     assert reloaded.state["plan"] == "三步走"
 
-
 def test_no_report_means_failed() -> None:
     """只说话不交报告 = 未完成（不是 done）。"""
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
@@ -157,7 +152,6 @@ def test_no_report_means_failed() -> None:
     assert root.status == "failed"
     assert "report" in (root.report.summary or "")
 
-
 def test_on_report_hook() -> None:
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
     raw["workers"]["root"]["tools"] = ["report"]
@@ -170,7 +164,6 @@ def test_on_report_hook() -> None:
     runtime.start("任务")
     hooks = [e for e in runtime.log.query(type="hook_action") if e.get("hook") == "on_report"]
     assert hooks, runtime.log.query(type="hook_action")
-
 
 def test_on_start_and_on_fail_hooks() -> None:
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
@@ -193,7 +186,6 @@ def test_on_start_and_on_fail_hooks() -> None:
     hooks = [event.get("hook") for event in runtime.log.query(type="hook_action")]
     assert "on_start" in hooks, hooks
     assert "on_fail" in hooks, hooks
-
 
 def test_unlimited_rounds_by_default() -> None:
     """不写 max_rounds = 不限轮数；模型可以连续多轮读状态，最后交报告。"""
@@ -219,7 +211,6 @@ def test_unlimited_rounds_by_default() -> None:
     assert root.status == "done"
     assert root.report.summary == "多轮后交付"
 
-
 def test_inline_role_template() -> None:
     """模板不写 role_file，直接内联 role 字符串也要能跑。"""
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
@@ -236,7 +227,6 @@ def test_inline_role_template() -> None:
     Runtime(workflow, provider, tmpdir()).start("任务")
     system = provider.seen[0][0]["content"]
     assert "你是内联角色" in system
-
 
 def test_read_worker_report() -> None:
     """父 worker 能直接读子 worker 的报告，不用翻事件流。"""
@@ -261,7 +251,6 @@ def test_read_worker_report() -> None:
     assert data["status"] == "done"
     assert data["unresolved"] == ["x"]
 
-
 def test_scheduler_concurrency_limit() -> None:
     from forchat.primitives.scheduler import Scheduler
 
@@ -280,7 +269,6 @@ def test_scheduler_concurrency_limit() -> None:
 
     assert order == ["start0", "end0", "start1", "end1", "start2", "end2"], order
     assert scheduler.stats()["peak_running"] == 1
-
 
 def test_parallel_spawn_and_log_integrity() -> None:
     """wait=False 的两个分支真并行；并行写事件流不能写出半行。"""
@@ -322,124 +310,106 @@ def test_parallel_spawn_and_log_integrity() -> None:
         if line.strip():
             json.loads(line)          # 半行会在这里抛 JSONDecodeError
 
-
-
-def test_context_trimmed_for_long_sessions() -> None:
-    """长会话必须裁剪上下文：保留 system+任务+最近轮次，并留事件。"""
-    import os
+def test_fork_and_restart_agents() -> None:
+    """fork 继承快照对话；restart 是全新会话。"""
+    import copy
 
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["read_state", "report"]
-    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["tools"] = ["spawn", "wait_workers", "fork", "restart", "report"]
+    raw["workers"]["root"]["can_spawn"] = ["coder"]
     raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["hooks"] = {}
     workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
 
-    turns = [tool_chunks([("read_state", {})]) for _ in range(20)]
-    turns.append(tool_chunks([("report", {"summary": "裁剪后完成"})]))
-    provider = FakeProvider(TemplateResponder({"root": turns}))
-
-    old = os.environ.get("FORCHAT_CONTEXT_MESSAGES")
-    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "10"
-    try:
-        runtime = Runtime(workflow, provider, tmpdir())
-        root = runtime.start("任务")
-    finally:
-        if old is None:
-            os.environ.pop("FORCHAT_CONTEXT_MESSAGES", None)
-        else:
-            os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
-
-    assert root.status == "done", root.status
-    assert runtime.log.query(type="context_trimmed")
-    assert max(len(seen) for seen in provider.seen) <= 12
-
-
-def test_thinking_logging_is_opt_in() -> None:
-    """thinking 默认不落事件（1B token 级运行会把事件流写爆），要开才记。"""
-    import os
-
-    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["report"]
-    raw["workers"]["root"]["can_spawn"] = []
-    raw["workers"]["root"]["hooks"] = {}
-    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
-
-    chunks = [
-        {"choices": [{"delta": {"reasoning_content": "想一下"}}]},
-        *tool_chunks([("report", {"summary": "ok"})]),
-    ]
-
-    def run_once() -> Runtime:
-        provider = FakeProvider(TemplateResponder({"root": [chunks]}))
-        runtime = Runtime(workflow, provider, tmpdir())
-        runtime.start("任务")
-        return runtime
-
-    assert not run_once().log.query(type="thinking_delta")
-
-    old = os.environ.get("FORCHAT_LOG_THINKING")
-    os.environ["FORCHAT_LOG_THINKING"] = "1"
-    try:
-        assert run_once().log.query(type="thinking_delta")
-    finally:
-        if old is None:
-            os.environ.pop("FORCHAT_LOG_THINKING", None)
-        else:
-            os.environ["FORCHAT_LOG_THINKING"] = old
-
-
-def test_resources_visible_to_worker() -> None:
-    """read_state 要带资源余量，模型派活前能看见。"""
-    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["workers"]["root"]["tools"] = ["read_state", "report"]
-    raw["workers"]["root"]["can_spawn"] = []
-    raw["workers"]["root"]["hooks"] = {}
-    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
-
-    provider = FakeProvider(
+    inner = FakeProvider(
         TemplateResponder(
             {
                 "root": [
-                    tool_chunks([("read_state", {})]),
-                    tool_chunks([("report", {"summary": "ok"})]),
+                    tool_chunks([("spawn", {"template": "coder", "task": "子任务"})]),
+                    tool_chunks([("fork", {"worker_id": "n002-coder"})]),
+                    tool_chunks([("restart", {"worker_id": "n002-coder"})]),
+                    tool_chunks([("report", {"summary": "根完成"})]),
+                ],
+                "coder": [
+                    tool_chunks([("report", {"summary": "原始结论"})]),
+                    tool_chunks([("report", {"summary": "fork 结论"})]),
+                    tool_chunks([("report", {"summary": "restart 结论"})]),
+                ],
+            }
+        )
+    )
+
+    class Recording:
+        def __init__(self, provider):
+            self.provider = provider
+            self.calls: list[list[dict]] = []
+
+        def stream(self, model, messages, tools=None):
+            self.calls.append(copy.deepcopy(messages))
+            return self.provider.stream(model, messages, tools)
+
+    provider = Recording(inner)
+    runtime = Runtime(workflow, provider, tmpdir())
+    root = runtime.start("任务")
+
+    assert root.status == "done"
+    assert runtime.log.query(type="worker_forked")
+    assert runtime.log.query(type="worker_restarted")
+
+    coder_calls = [
+        call for call in provider.calls
+        if any("模板 coder" in str(message) for message in call)
+    ]
+    assert len(coder_calls) >= 3, [len(call) for call in coder_calls]
+
+    fork_messages = coder_calls[1]
+    assert any("原始结论" in str(message) for message in fork_messages)
+
+    restart_messages = coder_calls[2]
+    assert not any("原始结论" in str(message) for message in restart_messages)
+
+
+def test_facts_survive_new_agent() -> None:
+    """事实库落盘：新开一个 agent 也能在系统提示里看到。"""
+    import copy
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["write_fact", "read_facts", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    run_dir = tmpdir()
+    first = FakeProvider(
+        TemplateResponder(
+            {
+                "root": [
+                    tool_chunks([("write_fact", {"name": "构建命令", "content": "pytest -q"})]),
+                    tool_chunks([("report", {"summary": "写完了"})]),
                 ]
             }
         )
     )
-    runtime = Runtime(workflow, provider, tmpdir())
-    runtime.start("任务")
-    results = [event.get("result", "") for event in runtime.log.query(type="tool_result")]
-    assert any("剩余总预算" in item for item in results), results
+    Runtime(workflow, first, run_dir).start("任务")
 
+    class Recording:
+        def __init__(self, provider):
+            self.provider = provider
+            self.calls: list[list[dict]] = []
 
-def test_context_trim_tightens_when_budget_low() -> None:
-    """整轮预算剩下 <20% 时，裁剪要收紧并标记 tight。"""
-    import os
+        def stream(self, model, messages, tools=None):
+            self.calls.append(copy.deepcopy(messages))
+            return self.provider.stream(model, messages, tools)
 
-    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
-    raw["limits"] = {"max_total_tokens": 200, "max_wall_seconds": 600}
-    raw["workers"]["root"]["tools"] = ["read_state", "report"]
-    raw["workers"]["root"]["can_spawn"] = []
-    raw["workers"]["root"]["hooks"] = {}
-    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
-
-    turns = [tool_chunks([("read_state", {})]) for _ in range(20)]
-    turns.append(tool_chunks([("report", {"summary": "ok"})]))
-    provider = FakeProvider(TemplateResponder({"root": turns}))
-
-    old = os.environ.get("FORCHAT_CONTEXT_MESSAGES")
-    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "6"
-    try:
-        runtime = Runtime(workflow, provider, tmpdir())
-        runtime.start("任务")
-    finally:
-        if old is None:
-            os.environ.pop("FORCHAT_CONTEXT_MESSAGES", None)
-        else:
-            os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
-
-    trimmed = runtime.log.query(type="context_trimmed")
-    assert any(event.get("tight") for event in trimmed), trimmed
+    second = Recording(
+        FakeProvider(
+            TemplateResponder({"root": [tool_chunks([("report", {"summary": "新 agent"})])]})
+        )
+    )
+    Runtime(workflow, second, run_dir).start("继续")
+    system = second.calls[0][0]["content"]
+    assert "已知事实" in system
+    assert "pytest -q" in system
 
 
 def main() -> int:
@@ -457,13 +427,10 @@ def main() -> int:
         ("父 worker 读子报告", test_read_worker_report),
         ("调度器并发上限", test_scheduler_concurrency_limit),
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
-        ("长会话上下文裁剪", test_context_trimmed_for_long_sessions),
-        ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
-        ("资源余量可见", test_resources_visible_to_worker),
-        ("预算低时裁剪收紧", test_context_trim_tightens_when_budget_low),
+        ("fork / restart agent", test_fork_and_restart_agents),
+        ("事实库跨 agent 存活", test_facts_survive_new_agent),
     ]
     return run("原语流程自检", checks)
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

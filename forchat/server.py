@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from .primitives import EventLog, Runtime, WorkflowDef, WorkflowError
+from .primitives import EventLog, Replay, Runtime, WorkflowDef, WorkflowError
 
 
 class RunManager:
@@ -123,6 +123,13 @@ class RunManager:
         if not (run_dir / "events.jsonl").is_file():
             return None
         return self._summary(run_dir)
+
+    def graph(self, run_id: str) -> dict[str, Any] | None:
+        """运行图：节点 + 父子边，前端画网状结构用。"""
+        run_dir = self.runs_root / run_id
+        if not (run_dir / "events.jsonl").is_file() and not list(run_dir.glob("events.*.jsonl")):
+            return None
+        return Replay(EventLog(run_dir)).graph()
 
     def metrics_text(self) -> str:
         """Prometheus 文本格式（简单够用，不做直方图）。"""
@@ -232,6 +239,10 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
                     return
                 if len(parts) == 4 and parts[3] == "events":
                     self._stream_events(parts[2])
+                    return
+                if len(parts) == 4 and parts[3] == "graph":
+                    item = manager.graph(parts[2])
+                    self._json(200 if item else 404, item or {"error": "not found"})
                     return
             self._json(404, {"error": "not found"})
 

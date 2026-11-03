@@ -97,6 +97,12 @@ def test_http_endpoints_and_sse() -> None:
             detail = json.loads(resp.read())
         assert detail["id"] == run_id and detail["status"] == "done"
 
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/runs/{run_id}/graph", timeout=5) as resp:
+            graph = json.loads(resp.read())
+        assert graph["nodes"], graph
+        assert any(node["id"] == "n001-root" for node in graph["nodes"])
+        assert all({"id", "status", "template"} <= set(node) for node in graph["nodes"])
+
         # SSE：读到 [DONE] 为止
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/runs/{run_id}/events", timeout=10

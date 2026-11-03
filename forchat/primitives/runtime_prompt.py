@@ -28,6 +28,27 @@ class PromptMixin:
         if mounted:
             system += "\n--- 已挂载技能 ---\n" + "\n\n".join(mounted) + "\n"
 
+        # 共享事实：重启/新开/compact 之后，新 agent 也自动看到这些"硬结论"
+        facts = self.state.get("facts") or {}
+        if facts:
+            lines = []
+            used = 0
+            for name, content in facts.items():
+                text = str(content)
+                if len(text) > 1200:
+                    text = text[:1200] + "…"
+                line = f"- {name}: {text}"
+                if used + len(line) > 6000:
+                    lines.append("（更多事实用 read_facts 读）")
+                    break
+                lines.append(line)
+                used += len(line)
+            system += (
+                "\n--- 已知事实（跨 agent 共享；重启/新开也不丢）---\n"
+                + "\n".join(lines)
+                + "\n"
+            )
+
         # 续跑：把历史 worker 的结论直接摆在新的根 worker 面前，别让它以为从零开始
         if worker.parent_id is None and self._restored:
             lines = []

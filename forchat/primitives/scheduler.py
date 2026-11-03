@@ -16,16 +16,19 @@ class Scheduler:
         self._pool = ThreadPoolExecutor(max_workers=self.max_concurrent, thread_name_prefix="worker")
         self._lock = threading.Lock()
         self.running = 0
+        self.pending = 0            # 已提交、等槽位的数量（给前端显示排队）
         self.peak = 0
         self.submitted = 0
 
     def submit(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Future:
         with self._lock:
             self.submitted += 1
+            self.pending += 1
         return self._pool.submit(self._wrap, fn, args, kwargs)
 
     def _wrap(self, fn: Callable[..., Any], args: tuple, kwargs: dict) -> Any:
         with self._lock:
+            self.pending = max(0, self.pending - 1)
             self.running += 1
             self.peak = max(self.peak, self.running)
         try:
@@ -41,5 +44,7 @@ class Scheduler:
         return {
             "max_concurrent": self.max_concurrent,
             "submitted": self.submitted,
+            "running": self.running,
+            "pending": self.pending,
             "peak_running": self.peak,
         }

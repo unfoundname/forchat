@@ -19,10 +19,11 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 
 | 面 | 内容 |
 |---|---|
-| 执行 | `spawn`（含 `paths` 授权）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
+| 执行 | `spawn`（含 `paths` 授权）、`fork`（继承快照分叉）、`restart`（全新会话）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
 | 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限；**预算只记账不中断**（超了继续跑，整轮超了只拦新派生） |
 | 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（子命令白名单）+ MCP 工具 |
-| 记录 | append-only 事件流、`Replay.review/tree/summary`、`--runs` / `--inspect` / `--resume` |
+| 记忆 | 共享事实库：`write_fact` / `read_facts`，落盘 `state.json`，新 agent 的系统提示自动带 |
+| 记录 | append-only 事件流、`Replay.review/tree/summary/graph`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
 | 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、worker 级 `retries`、截断检测、预算熔断、续跑、中断 worker 可见、每轮快照续跑 |
 | 服务 | HTTP/SSE（`--serve`）：启动运行、查状态、订阅事件流、Bearer token、限流、停止；`/metrics` Prometheus 文本 |
@@ -50,13 +51,14 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 86 条用例（CI 用这个）
+pytest -q                    # 90 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
 - `tests/test_primitives.py`：11 条（预算/配置校验）
-- `tests/test_primitives_flows.py`：17 条（派生/hook/并发/上下文裁剪/资源感知）
-- `tests/test_primitives_state.py`：10 条（状态/续跑/自动恢复/预算闸）
+- `tests/test_primitives_flows.py`：15 条（派生/hook/并发/fork/restart/事实库）
+- `tests/test_primitives_resources.py`：5 条（上下文裁剪/资源感知/排队）
+- `tests/test_primitives_state.py`：11 条（状态/续跑/自动恢复/运行图）
 - `tests/test_primitives_guards.py`：8 条（scope/停止/快照/重试）
 - `tests/test_tools.py`：15 条（registry/provider/重试/成本/read/edit/grep/glob）
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）

@@ -210,5 +210,9 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
                 },
                 "wall_seconds": {"limit": self.max_wall_seconds, "deadline": self.run_deadline},
                 "workers": {"created": len(self.workers), "limit": self.max_workers},
+                "queue": {
+                    "waiting": self.scheduler.stats()["pending"],
+                    "concurrency": self.scheduler.max_concurrent,
+                },
                 "concurrency": self.scheduler.stats(),
             }

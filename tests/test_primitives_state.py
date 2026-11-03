@@ -297,12 +297,39 @@ def test_auto_resume_restores_tree_from_snapshots() -> None:
     assert len(created) == 1
 
 
+def test_replay_graph_exposes_mesh() -> None:
+    """给前端的运行图：节点带状态/模板/摘要，边是父子派生关系。"""
+    workflow = WorkflowDef.load(MINIMAL)
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("spawn", {"template": "coder", "task": "子任务"})]),
+                tool_chunks([("report", {"summary": "根完成"})]),
+            ],
+            "coder": [tool_chunks([("report", {"summary": "子完成"})])],
+            "reviewer": [tool_chunks([("report", {"summary": "审完"})])],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+
+    graph = Replay(runtime.log).graph()
+    ids = {node["id"] for node in graph["nodes"]}
+    assert "n001-root" in ids and len(ids) >= 2
+    assert any(edge["from"] == "n001-root" for edge in graph["edges"])
+    root_node = next(node for node in graph["nodes"] if node["id"] == "n001-root")
+    assert root_node["template"] == "root"
+    assert root_node["status"] == "done"
+    assert root_node["summary"] == "根完成"
+
+
 def main() -> int:
     checks = [
         ("并发=1 时串行", test_runtime_serial_when_concurrency_one),
         ("续跑恢复历史 worker", test_resume_restores_workers_and_seq),
         ("附件自动进报告", test_artifact_indexed_into_report),
         ("崩溃后自动恢复整棵树", test_auto_resume_restores_tree_from_snapshots),
+        ("运行图（节点+边）", test_replay_graph_exposes_mesh),
         ("provider 异常只失败单个 worker", test_provider_error_fails_only_worker),
         ("summary 合计行", test_summary_has_totals),
         ("预算只记账不中断", test_budget_is_soft_accounting),

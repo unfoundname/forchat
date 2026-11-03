@@ -126,5 +126,63 @@ TOOL_SPECS: dict[str, dict] = {
             },
         },
     },
+    "fork": {
+        "type": "function",
+        "function": {
+            "name": "fork",
+            "description": "从一个已有 worker 的执行快照分叉出一个新 agent（继承它到目前为止的对话），"
+                           "用于并行尝试不同方案。新 worker 模板/范围与源相同。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string", "description": "要分叉的源 worker"},
+                    "task": {"type": "string", "description": "追加给新分支的任务；省略则沿用原任务"},
+                    "wait": {"type": "boolean", "description": "是否等它跑完，默认 true"},
+                },
+                "required": ["worker_id"],
+            },
+        },
+    },
+    "restart": {
+        "type": "function",
+        "function": {
+            "name": "restart",
+            "description": "用同一个模板/任务/范围重新起一个全新的 agent（不带旧对话）。"
+                           "上下文已涣散、越跑越差时，比继续喂它更划算。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string", "description": "要重开的 worker"},
+                    "task": {"type": "string", "description": "新任务；省略则沿用原任务"},
+                    "wait": {"type": "boolean", "description": "是否等它跑完，默认 true"},
+                },
+                "required": ["worker_id"],
+            },
+        },
+    },
+    "write_fact": {
+        "type": "function",
+        "function": {
+            "name": "write_fact",
+            "description": "把一条'事实'写进跨 agent 的共享事实库（落盘 state.json）。"
+                           "它会自动出现在之后每个新 agent 的系统提示里——重启/新开/compact 都不丢。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "事实名，例如 '构建命令'"},
+                    "content": {"type": "string", "description": "事实内容（尽量短、可验证）"},
+                },
+                "required": ["name", "content"],
+            },
+        },
+    },
+    "read_facts": {
+        "type": "function",
+        "function": {
+            "name": "read_facts",
+            "description": "读取当前运行的全部事实（跨 agent 共享）。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 }
 
