@@ -94,11 +94,87 @@ def test_screenshot_marker_to_image_message() -> None:
     assert "视觉未开启" in Runtime._normalize_image_result(marker)
 
 
+def _fetch_module():
+    from forchat.tools import web_fetch
+
+    return web_fetch
+
+
+def test_ssrf_numeric_encodings() -> None:
+    """十进制/八进制/十六进制/短写 IP 都要归一化后拦下。"""
+    wf = _fetch_module()
+    blocked = [
+        "2130706433",        # 127.0.0.1 的十进制
+        "0x7f000001",        # 十六进制
+        "0177.0.0.1",        # 八进制
+        "127.1",             # 短写
+        "0",                 # 0.0.0.0
+    ]
+    for host in blocked:
+        assert wf.blocked_host(host), host
+
+
+def test_ssrf_ipv6_forms() -> None:
+    wf = _fetch_module()
+    for host in ("::1", "::ffff:127.0.0.1", "fe80::1", "::"):
+        assert wf.blocked_host(host), host
+    assert not wf.blocked_host("93.184.216.34"), "公网 IP 不应被误杀"
+
+
+def test_ssrf_localhost_variants() -> None:
+    wf = _fetch_module()
+    for host in ("localhost", "LOCALHOST.", "foo.localhost", "localhost.localdomain"):
+        assert wf.blocked_host(host), host
+
+
+def test_ssrf_dns_resolving_to_private() -> None:
+    """域名解析到内网也必须拒绝（fail-closed）。"""
+    wf = _fetch_module()
+    original = wf.socket.getaddrinfo
+    calls = {"n": 0}
+
+    def fake(host, port, *args, **kwargs):
+        calls["n"] += 1
+        if host == "public.example":
+            return [(wf.socket.AF_INET, wf.socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+        return [(wf.socket.AF_INET, wf.socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
+
+    wf.socket.getaddrinfo = fake
+    try:
+        assert wf.blocked_host("private.example") is True
+        assert wf.blocked_host("public.example") is False
+    finally:
+        wf.socket.getaddrinfo = original
+    assert calls["n"] >= 2
+
+
+def test_ssrf_redirect_blocked() -> None:
+    """公网 302 到内网/非 http(s) 必须被拦。"""
+    wf = _fetch_module()
+    handler = wf.SafeRedirectHandler()
+    for target in (
+        "http://127.0.0.1/admin",
+        "http://169.254.169.254/latest/meta-data/",
+        "file:///C:/Windows/win.ini",
+    ):
+        try:
+            handler.redirect_request(None, None, 302, "Found", {}, target)
+        except Exception as exc:                       # noqa: BLE001
+            assert "redirect blocked" in str(exc), (target, exc)
+        else:
+            raise AssertionError(f"重定向到 {target} 应当被拒绝")
+
+
 def main() -> int:
     checks = [
         ("未配置时报错", test_search_requires_config),
         ("搜索后端返回结果", test_search_backend_returns_results),
         ("截图标记转多模态消息", test_screenshot_marker_to_image_message),
+        ("SSRF-数字写法", test_ssrf_numeric_encodings),
+        ("SSRF-IPv6", test_ssrf_ipv6_forms),
+        ("SSRF-localhost", test_ssrf_localhost_variants),
+        ("SSRF-DNS 解析内网", test_ssrf_dns_resolving_to_private),
+        ("SSRF-重定向拦截", test_ssrf_redirect_blocked),
     ]
     return run("web_search 自检", checks)
 
