@@ -67,6 +67,9 @@ class ToolsMixin:
         else:
             result = handler(worker, tpl, args)
         result = self._normalize_image_result(result)
+        if name == "run_checks":
+            worker.checks_passed = result.startswith("验收总结果：PASS")
+            self.log.append("checks_result", worker_id=worker.id, passed=worker.checks_passed)
         self.log.append("tool_result", worker_id=worker.id, tool=name, result=result[:500])
         return result
 
@@ -251,6 +254,10 @@ class ToolsMixin:
             self.log.append("stop_all_requested", workers=count)
         return count
     def _tool_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        if tpl.require_checks and worker.checks_passed is not True:
+            self.log.append("report_rejected", worker_id=worker.id, reason="checks")
+            return ("错误：这个 worker 要求先跑 run_checks 且全部 PASS 才能 report；"
+                    "先跑检查，别直接交报告")
         declared = [str(a) for a in args.get("artifacts") or []]
         # 自己 write_artifact 过的文件自动进索引，模型不用再手抄一遍路径
         merged = list(dict.fromkeys([*worker.artifacts, *declared]))

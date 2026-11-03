@@ -64,7 +64,9 @@ def test_thinking_logging_is_opt_in() -> None:
     workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
 
     chunks = [
-        {"choices": [{"delta": {"reasoning_content": "想一下"}}]},
+        {"choices": [{"delta": {"reasoning_content": "想"}}]},
+        {"choices": [{"delta": {"reasoning_content": "一下"}}]},
+        {"choices": [{"delta": {"reasoning_content": "。"}}]},
         *tool_chunks([("report", {"summary": "ok"})]),
     ]
 
@@ -74,12 +76,14 @@ def test_thinking_logging_is_opt_in() -> None:
         runtime.start("任务")
         return runtime
 
-    assert not run_once().log.query(type="thinking_delta")
+    assert not run_once().log.query(type="thinking")
 
     old = os.environ.get("FORCHAT_LOG_THINKING")
     os.environ["FORCHAT_LOG_THINKING"] = "1"
     try:
-        assert run_once().log.query(type="thinking_delta")
+        events = run_once().log.query(type="thinking")
+        assert len(events) == 1, "整轮 thinking 要合并成一条事件"
+        assert events[0]["text"] == "想一下。"
     finally:
         if old is None:
             os.environ.pop("FORCHAT_LOG_THINKING", None)

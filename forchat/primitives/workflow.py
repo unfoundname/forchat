@@ -24,7 +24,7 @@ _LIMIT_KEYS = {
 }
 _WORKER_KEYS = {
     "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks",
-    "scope", "retries",
+    "scope", "retries", "require_checks",
 }
 
 
@@ -44,6 +44,7 @@ class WorkerTemplate:
     hooks: dict[str, list[dict]] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)   # 模板级默认授权范围；空 = 继承父 worker
     retries: int = 0                                 # 仅对"瞬时错误"重跑该 worker，默认 0
+    require_checks: bool = False                     # true = report 前必须 run_checks 全 PASS
 
 
 @dataclass
@@ -193,6 +194,10 @@ class WorkflowDef:
         if not isinstance(retries, int) or retries < 0:
             errors.append(f"worker {name} 的 retries 必须是非负整数")
 
+        require_checks = spec.get("require_checks", False)
+        if not isinstance(require_checks, bool):
+            errors.append(f"worker {name} 的 require_checks 必须是布尔值")
+
         try:
             budget = Budget.from_dict(spec.get("budget"))
         except ValueError as exc:
@@ -228,5 +233,6 @@ class WorkflowDef:
                 hooks={k: list(v) for k, v in hook_map.items()},
                 scope=[str(s) for s in (spec.get("scope") or [])],
                 retries=int(spec.get("retries") or 0),
+                require_checks=bool(spec.get("require_checks", False)),
             )
         return errors

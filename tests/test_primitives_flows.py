@@ -349,6 +349,52 @@ def test_contracts_frozen_and_injected() -> None:
     assert "冻结契约" in system and "GET /api/videos" in system
 
 
+def test_report_gate_requires_checks() -> None:
+    """require_checks：没跑过 run_checks / 检查失败时，report 必须被拒。"""
+    import os
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["run_checks", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["require_checks"] = True
+    workflow = WorkflowDef.from_dict(
+        raw, base_dir=MINIMAL.parent, known_tools={"run_checks"}
+    )
+
+    work = tmpdir()
+    (work / "ok.py").write_text("print('ok')\n", encoding="utf-8")
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("report", {"summary": "偷跑"})]),
+                tool_chunks([("run_checks", {"checks": [{"name": "ok", "script": "ok.py"}]})]),
+                tool_chunks([("report", {"summary": "检查后完成"})]),
+            ]
+        }
+    )
+    old = os.getcwd()
+    os.chdir(work)
+    try:
+        external = {
+            "run_checks": (
+                {"type": "function", "function": {"name": "run_checks"}},
+                lambda args: "验收总结果：PASS\n- ok: PASS",
+            )
+        }
+        runtime = Runtime(
+            workflow, FakeProvider(responder), tmpdir(), external_tools=external
+        )
+        root = runtime.start("任务")
+    finally:
+        os.chdir(old)
+
+    assert runtime.log.query(type="report_rejected"), "没检查就 report 应当被拒"
+    assert runtime.log.query(type="checks_result")[-1]["passed"] is True
+    assert root.status == "done"
+    assert root.report.summary == "检查后完成"
+
+
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),
@@ -365,6 +411,7 @@ def main() -> int:
         ("调度器并发上限", test_scheduler_concurrency_limit),
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
         ("契约冻结与注入", test_contracts_frozen_and_injected),
+        ("report 前必须跑检查", test_report_gate_requires_checks),
     ]
     return run("原语流程自检", checks)
 

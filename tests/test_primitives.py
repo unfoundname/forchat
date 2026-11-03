@@ -211,10 +211,30 @@ def test_eventlog_cross_process_append() -> None:
     assert {event.get("writer") for event in events} == {"a", "b"}
 
 
+def test_tool_events_split_from_main_log() -> None:
+    """工具全文进 tools.jsonl；events.jsonl 只留截断摘要（不灌大文本）。"""
+    from forchat.primitives.store import EventLog
+
+    run_dir = tmpdir()
+    log = EventLog(run_dir)
+    big = "x" * 2000
+    log.append("tool_result", worker_id="w1", tool="read", result=big)
+
+    events = [json.loads(line) for line in
+              (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    tools = [json.loads(line) for line in
+             (run_dir / "tools.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(events) == 1 and len(tools) == 1
+    assert len(events[0]["result"]) == 500
+    assert len(tools[0]["result"]) == 2000
+    assert tools[0]["worker_id"] == "w1"
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
         ("事件流跨进程追加", test_eventlog_cross_process_append),
+        ("工具事件分离存储", test_tool_events_split_from_main_log),
         ("eventlog 追加/查询/附件", test_eventlog),
         ("workflow 拒绝未知工具", test_workflow_rejects_unknown_tool),
         ("workflow 拒绝不存在的派生目标", test_workflow_rejects_bad_spawn_target),

@@ -391,6 +391,7 @@ class WorkerMixin:
     ) -> tuple[str, list[dict], dict[str, int]]:
         self.log.append("round_start", worker_id=worker.id, round=rnd)
         content: list[str] = []
+        thinking: list[str] = []
         pending: dict[int, dict] = {}
         prompt_tokens = 0
         completion_tokens = 0
@@ -420,10 +421,8 @@ class WorkerMixin:
 
             if delta.get("content"):
                 content.append(delta["content"])
-            if delta.get("reasoning_content") and os.environ.get("FORCHAT_LOG_THINKING") == "1":
-                # 默认不逐条落 thinking：1B token 级运行会把事件流写爆
-                self.log.append("thinking_delta", worker_id=worker.id,
-                                text=delta["reasoning_content"])
+            if delta.get("reasoning_content"):
+                thinking.append(delta["reasoning_content"])
 
             for tc in delta.get("tool_calls") or []:
                 slot = pending.setdefault(int(tc.get("index", 0)),
@@ -444,6 +443,11 @@ class WorkerMixin:
                     self.log.append("response_truncated", worker_id=worker.id, round=rnd)
 
         text = "".join(content)
+        if thinking and os.environ.get("FORCHAT_LOG_THINKING") == "1":
+            # 整轮 thinking 合并成一条事件（默认关闭），不按 token 落盘
+            self.log.append("thinking", worker_id=worker.id, round=rnd,
+                            chars=sum(len(item) for item in thinking),
+                            text="".join(thinking)[:4000])
         if text:
             self.log.append("assistant_message", worker_id=worker.id, round=rnd, text=text)
         calls = [pending[i] for i in sorted(pending)]

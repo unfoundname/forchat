@@ -25,6 +25,8 @@ from typing import Any
 
 # 这些事件出现后必须落盘（崩溃恢复依赖它们）
 DURABLE_TYPES = {"report", "worker_done", "run_finished", "run_budget_exhausted", "run_resumed"}
+# 工具调用/结果的全文单独进 tools.jsonl，events.jsonl 只留摘要（避免大段输出灌进主事件流）
+TOOL_EVENTS = {"tool_call", "tool_result"}
 SYNC_EVERY = 50
 
 
@@ -65,19 +67,32 @@ class EventLog:
     # ------------------------------------------------------------------ 写
     def append(self, type: str, **fields: Any) -> dict[str, Any]:
         event = {"type": type, "ts": time.time(), **fields}
-        line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
+        compact = event
+        if type in TOOL_EVENTS:
+            # 工具调用/结果全文进 tools.jsonl；events.jsonl 只留摘要，别把大段输出灌进去
+            compact = dict(event)
+            for key in ("arguments", "result", "text"):
+                if key in compact:
+                    compact[key] = str(compact[key])[:500]
+
         with self._lock:
             # 跨进程文件锁：两个进程写同一个 run 目录时不会互相插行
             with self._lock_file() as lock:
                 self._maybe_rotate()
-                with self.path.open("a", encoding="utf-8") as handle:
-                    handle.write(line)
-                    handle.flush()
-                    self._since_sync += 1
-                    if type in DURABLE_TYPES or self._since_sync >= SYNC_EVERY:
-                        os.fsync(handle.fileno())
-                        self._since_sync = 0
+                if type in TOOL_EVENTS:
+                    self._write_line(self.root / "tools.jsonl", event, durable=True)
+                self._write_line(self.path, compact, durable=type in DURABLE_TYPES)
         return event
+
+    def _write_line(self, path: Path, event: dict[str, Any], durable: bool = False) -> None:
+        line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line)
+            handle.flush()
+            self._since_sync += 1
+            if durable or self._since_sync >= SYNC_EVERY:
+                os.fsync(handle.fileno())
+                self._since_sync = 0
 
     @contextmanager
     def _lock_file(self):

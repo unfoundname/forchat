@@ -207,7 +207,8 @@ agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许�
 - `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；默认拒绝内网地址（SSRF），限时 20s、限读 500KB；
 - `web_search`：联网搜索（需配置 `FORCHAT_SEARCH_URL` / `FORCHAT_SEARCH_KEY`，DeepSeek 的搜索接口可直接填）；
 - `screenshot`：抓屏存 PNG；`FORCHAT_VISION=1` 时运行时把它转成 `image_url` 多模态消息（网关需支持视觉）；
-- `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述。
+- `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述；
+  workflow 模板写 `"require_checks": true` 后，没跑检查/检查失败时 `report` 会被直接拒绝。
 
 在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
 
@@ -357,9 +358,8 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
   （已流出去的内容不能重来）；次数用 `FORCHAT_RETRIES` 控制，默认 2；
 - **worker 级重试**：模板写 `"retries": N`，worker 因 `reason=error` 失败时会自动重跑（新会话），
   用来兜住 provider 之外的基础设施抖动；业务失败不重试；
-- **事件流滚动**：单文件超过 `FORCHAT_EVENT_LOG_MB`（默认 32）滚成 `events.<n>.jsonl`，
-  `read()` 按段拼回；`report`/`worker_done`/`run_finished` 额外 fsync，崩溃最多丢正在写的那一行；
-  append 时对 `events.lock` 加**跨进程文件锁**，两个进程写同一个 run 目录不会互相插行；
+- **事件流分文件**：`events.jsonl` 只放控制/文本事件（assistant 文本按轮合并），工具调用/结果全文单独进 `tools.jsonl`（events 里只留 500 字符摘要）；thinking 整轮合并成一条、默认关闭；
+- **滚动与耐久**：`events.<n>.jsonl` 超过 `FORCHAT_EVENT_LOG_MB` 自动分段，`report`/`worker_done`/`run_finished` 额外 fsync；append 对 `events.lock` 加**跨进程文件锁**；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
 - **只有墙钟到期才中断 worker**（`run_expired`）；token/成本超预算只记账，兄弟分支照常跑完；
 - **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`；
