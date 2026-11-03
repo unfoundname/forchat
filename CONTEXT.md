@@ -41,6 +41,7 @@
 - **围栏（fence）**：能力限制，优先于事后熔断。递归靠 `can_spawn` 为空来杜绝，不是靠层数。
 - **授权范围（scope）**：worker 只能修改的目录列表（相对项目根）。空 = 整个项目根；由父 worker 在 `spawn(paths=...)` 时授予，不能超出自己范围。
 - **护栏 ≠ 沙箱**：Policy 只检查工具参数；`run_python` 里的脚本是任意代码。
+- **进程出口**：生产代码创建进程只允许走 `forchat/exec.py`（脱敏/沙箱/取消/Job 限额）；其他模块直接 `subprocess.Popen/run` 会被 `test_layering.py` 拦下。
 - **ACL 沙箱（Windows，可选）**：`FORCHAT_SANDBOX=acl` 用受限令牌 + Low 完整性 + 能力 SID
   限制子进程**写**工作区；只限写，读/网络不隔离，fail-closed。
 - **原子写 / 乐观并发 / 写锁**：`write_file`、`edit_file` 先写临时文件再 `os.replace`，读者看不到半截；整段持有按路径的跨进程写锁；可带 `expected_sha256` / `expected_mtime`，文件被别人改过就拒绝——这是**并发控制**，和沙箱（能不能写）是两个维度。锁是建议锁，`run_python` 里的脚本不遵守。

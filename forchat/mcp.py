@@ -66,16 +66,16 @@ class MCPClient:
     def start(self) -> "MCPClient":
         # 继承的环境擦掉密钥；配置里显式写的 env 仍然生效（那是用户主动授予的）
         env = clean_environ(self.env)
-        self.proc = subprocess.Popen(
+        from . import exec as exec_mod
+
+        self.proc = exec_mod.spawn(
             [self.command, *self.args],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             bufsize=1,
             env=env,
+            scrub=False,
             cwd=self.cwd,
         )
         threading.Thread(target=self._read_loop, name=f"mcp-{self.name}-out", daemon=True).start()

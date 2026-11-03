@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .. import subproc
 from ..env_scrub import clean_environ
 from ..registry import tool
 
@@ -43,18 +44,17 @@ def run_checks(checks: list[dict], timeout_seconds: float = TIMEOUT) -> str:
         work = (root / str(item.get("cwd"))).resolve() if item.get("cwd") else root
         command = [sys.executable, str(target), *[str(a) for a in item.get("args") or []]]
         try:
-            proc = subprocess.run(
+            proc = subproc.run(
                 command,
                 cwd=work,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
                 timeout=float(timeout_seconds),
                 env=clean_environ(),
             )
         except subprocess.TimeoutExpired:
             results.append(f"- {name}: FAIL（超时 >{timeout_seconds}s）")
+            continue
+        except subproc.SandboxUnavailable as exc:
+            results.append(f"- {name}: FAIL（沙箱不可用：{exc}）")
             continue
         output = (proc.stdout or "")[-MAX_OUTPUT:]
         status = "PASS" if proc.returncode == 0 else f"FAIL(exit={proc.returncode})"

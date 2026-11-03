@@ -326,6 +326,9 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
 - `git` 参数里出现的路径也要在范围内（`worktree add ../x` 会被拒）；
 - `run_python` 只执行 `.py`，且脚本路径必须在授权范围内。
 
+**进程唯一出口**：所有工具/子进程都经 `forchat/exec.py` 创建（环境脱敏、可选 ACL 沙箱、
+取消登记、Job Object 限额）；`test_layering.py` 机械禁止绕开它。
+
 **它挡不住什么（必须知道）**：
 
 - 它不是沙箱：`run_python` 执行的脚本是**任意代码**，进程里想写哪就能写哪——护栏只检查

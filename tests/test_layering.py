@@ -96,11 +96,33 @@ def check_file_length() -> list[str]:
     return problems
 
 
+def check_spawn_outlet() -> list[str]:
+    """进程创建只能走 forchat/exec.py（统一取消/限额/沙箱）。"""
+    owner = ROOT / "forchat" / "exec.py"
+    calls = (
+        "subprocess.Popen(", "subprocess.run(", "subprocess.call(",
+        "subprocess.check_output(", "subprocess.check_call(",
+        "os.system(", "os.popen(", "os.spawn",
+    )
+    problems: list[str] = []
+    for path in py_files("forchat"):
+        if path == owner:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for call in calls:
+            if call in text:
+                problems.append(
+                    f"{path.relative_to(ROOT)} 直接调用 {call.rstrip('(')}，必须走 forchat/exec.py"
+                )
+    return problems
+
+
 def main() -> int:
     problems = (
         check_direction()
         + check_domain_words()
         + check_single_loop()
+        + check_spawn_outlet()
         + check_file_length()
     )
     if problems:
@@ -108,7 +130,7 @@ def main() -> int:
         for item in problems:
             print("  -", item)
         return 1
-    print("分层校验通过：依赖方向、领域词隔离、唯一执行循环、单文件 ≤ 500 行")
+    print("分层校验通过：依赖方向、领域词隔离、唯一执行循环、进程唯一出口、单文件 ≤ 500 行")
     return 0
 
 

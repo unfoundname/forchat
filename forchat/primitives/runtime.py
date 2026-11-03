@@ -49,6 +49,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         worker_context: Callable[[str], Any] | None = None,
         cancel_processes: Callable[[str], Any] | None = None,
         process_workers: bool = False,
+        spawn_process: Callable[..., Any] | None = None,
         restore: bool = True,
     ) -> None:
         self.wf = workflow
@@ -59,6 +60,8 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         # 由装配层注入：标记"当前 worker"以便取消时 kill 它的子进程
         self.worker_context = worker_context
         self.cancel_processes = cancel_processes
+        # 进程 worker 的启动函数（装配层传 forchat.exec.spawn；原语层不认识具体实现）
+        self.spawn_process = spawn_process
         # 叶子 worker 是否跑在独立子进程里（真硬中断）；子进程自己不再嵌套
         self.process_workers = process_workers
         self.hooks_enabled = True
@@ -205,15 +208,15 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin):
         }
         env = dict(os.environ)
         env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-        proc = subprocess.Popen(
+        if self.spawn_process is None:
+            raise RuntimeError("进程 worker 需要装配层注入 spawn_process（forchat.exec.spawn）")
+        proc = self.spawn_process(
             [sys.executable, "-m", "forchat.worker_proc"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             env=env,
+            scrub=False,
         )
         assert proc.stdin
         proc.stdin.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")

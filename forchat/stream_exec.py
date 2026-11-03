@@ -50,15 +50,15 @@ class ProcessStreamFactory:
             ensure_ascii=False,
             default=str,
         )
-        proc = subprocess.Popen(
+        from . import exec as exec_mod
+
+        proc = exec_mod.spawn(
             [self.python, "-m", "forchat.stream_child"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parent.parent)),
+            scrub=False,
         )
         assert proc.stdin and proc.stdout
         proc.stdin.write(request + "\n")

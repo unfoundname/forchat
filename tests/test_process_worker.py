@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _support import MINIMAL, run, tmpdir
 
+from forchat import exec as exec_mod
 from forchat.primitives import Runtime, WorkflowDef
 from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 
@@ -49,7 +50,7 @@ def test_leaf_worker_runs_in_subprocess() -> None:
     )
     run_dir = tmpdir()
     try:
-        runtime = Runtime(workflow, parent, run_dir, process_workers=True)
+        runtime = Runtime(workflow, parent, run_dir, process_workers=True, spawn_process=exec_mod.spawn)
         root = runtime.start("任务")
     finally:
         os.environ.pop("FORCHAT_CHILD_SCRIPT", None)
@@ -94,7 +95,7 @@ def test_process_worker_can_be_hard_killed() -> None:
     run_dir = tmpdir()
     started = time.time()
     try:
-        runtime = Runtime(workflow, parent, run_dir, process_workers=True)
+        runtime = Runtime(workflow, parent, run_dir, process_workers=True, spawn_process=exec_mod.spawn)
         runtime.start("任务")
     finally:
         os.environ.pop("FORCHAT_CHILD_SCRIPT", None)

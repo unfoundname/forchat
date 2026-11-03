@@ -276,9 +276,11 @@ def _set_low_integrity(token) -> None:
 
 
 def _label_low(path: str) -> None:
-    proc = subprocess.run(
+    from . import exec as exec_mod
+
+    proc = exec_mod.run_simple(
         ["icacls", path, "/setintegritylevel", "(OI)(CI)L"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        scrub=False, timeout=30,
     )
     if proc.returncode != 0:
         raise SandboxError(f"设置 {path} 的 Low 标签失败：{proc.stdout.strip()[:200]}")
