@@ -193,7 +193,9 @@ provider 的两个硬参数（真模型）：
 - coder 用 `git` 工具建 worktree、`write_file` 落盘、再 `git cwd=.worktrees/<名字>` 提交；
 - root 用 `git worktree list` + `git show --name-only` 核对隔离性，然后 report。
 
-真跑过一次：两个 coder 并行（`wait=false`）各自提交 `1fb13b4` / `42bf46b`，主工作区未被触碰。
+真跑过一次：两个 coder 并行（`wait=false`）各自在 worktree 内用 `run_python(cwd=...)` 跑通测试后提交
+（`97ed50b` 统计模块 28 用例 / `63a9409` IO 工具 21 用例），root 用 `git worktree list` 与 `git show` 独立核对，
+主工作区未被触碰。
 
 ## 串行合并（示例）
 
