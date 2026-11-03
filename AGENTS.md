@@ -40,6 +40,11 @@ python examples/run_demo.py         # 端到端：假 provider 跑一次完整�
 - `can_spawn` 里的名字必须存在；想表达"叶子"就把 `can_spawn` 留空；
 - `report` 是完成信号，模板的 role 里必须告诉模型"结束时要 report"。
 
+## 踩坑记录
+
+- **subprocess 捕获输出必须显式 `encoding="utf-8", errors="replace"`**：Windows 默认按 GBK 解码子进程输出，遇到 UTF-8 中文会抛 `UnicodeDecodeError`（本仓库已踩过一次，`run_python` 和 `--check` 的测试都显式传了）。
+- **不要用 PowerShell 管道改仓库里的文本文件**：`Get-Content | Set-Content` 会按 GBK 读、UTF-8 写，中文直接变乱码（README 踩过）。改文件用编辑工具，别走 shell 管道。
+
 ## 提交前
 
 - 新增原语要有对应的 `tests/test_primitives.py` 用例（含"删掉它某能力就表达不出来"的反证思路）；

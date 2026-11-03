@@ -662,6 +662,81 @@ def test_workflow_rejects_bad_max_rounds() -> None:
     raise AssertionError("max_rounds=0 应当报错")
 
 
+def test_max_workers_fence() -> None:
+    """worker 数量上限：超出的派生被拒，不会把资源吃光。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["limits"]["max_workers"] = 2
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("spawn", {"template": "coder", "task": "A", "wait": True})]),
+                tool_chunks([("spawn", {"template": "coder", "task": "B", "wait": True})]),
+                tool_chunks([("report", {"summary": "只成功派了一个"})]),
+            ],
+            "coder": [tool_chunks([("report", {"summary": "子完成"})])],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+
+    rejected = runtime.log.query(type="spawn_rejected")
+    assert rejected and rejected[0]["reason"] == "max_workers", rejected
+    assert len(runtime.workers) == 2, runtime.workers
+
+
+def test_on_start_and_on_fail_hooks() -> None:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {
+        "on_start": [{"action": "notify"}],
+        "on_fail": [{"action": "notify"}],
+    }
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    text_only = [
+        {"choices": [{"delta": {"content": "没有调用 report"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+    ]
+    runtime = Runtime(workflow, FakeProvider([text_only]), tmpdir())
+    root = runtime.start("任务")
+
+    assert root.status == "failed"
+    hooks = [event.get("hook") for event in runtime.log.query(type="hook_action")]
+    assert "on_start" in hooks, hooks
+    assert "on_fail" in hooks, hooks
+
+
+def test_check_cli_exit_codes() -> None:
+    """--check 不需要 key：好配置退出 0，坏配置退出 2。"""
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    good = root / "examples" / "workflows" / "minimal" / "workflow.json"
+    result = subprocess.run(
+        [sys.executable, "-m", "forchat", "--check", str(good)],
+        cwd=root, capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 0, (result.stdout or "") + (result.stderr or "")
+    assert "[check] ok" in result.stdout
+
+    bad = subprocess.run(
+        [sys.executable, "-m", "forchat", "--check", str(root / "nope.json")],
+        cwd=root, capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert bad.returncode == 2, (bad.stdout or "") + (bad.stderr or "")
+    assert "[check] 失败" in bad.stdout
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -696,6 +771,9 @@ def main() -> int:
         ("summary 合计行", test_summary_has_totals),
         ("workflow 拒绝未知顶层字段", test_workflow_rejects_unknown_top_key),
         ("workflow 拒绝 max_rounds=0", test_workflow_rejects_bad_max_rounds),
+        ("围栏：worker 数量上限", test_max_workers_fence),
+        ("hook：on_start / on_fail", test_on_start_and_on_fail_hooks),
+        ("--check 进程级退出码", test_check_cli_exit_codes),
     ]
     failed = 0
     for name, fn in checks:
