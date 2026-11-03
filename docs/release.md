@@ -42,6 +42,7 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 | `microproject-20261103-142509` | 3 worker，故意失败实验（质量门） | done，未粉饰失败；verifier 超时被隔离 |
 | `delivery-*` | 3 worker，write_file + git 核对 | done |
 | `minimal-*`（含续跑 3 轮） | 1~3 worker | done |
+| `minimal-20261103-162951-527` | **HTTP + 真模型**：`POST /runs` → 3 worker → 41s / 37.5k tokens | `failed`（minimal 的 coder 只有 report/read_state/write_note，被要求做仓库侦查，reviewer 如实判"未达成"而非粉饰） |
 
 我（作者）独立复跑过的关键结论：capstone / scale 的合并结果与测试套件、microproject 的失败门禁、
 resume 的历史恢复——都不是只信模型自述。
