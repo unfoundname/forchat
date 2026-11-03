@@ -13,7 +13,7 @@ _INTERESTING = {
     "worker_created", "worker_started", "assistant_message", "tool_call", "tool_result",
     "spawn_rejected", "hook_spawn", "hook_action", "report", "worker_done",
     "budget_exhausted", "run_finished", "tool_denied", "worker_error", "run_resumed",
-    "response_truncated", "run_budget_exhausted",
+    "response_truncated", "run_budget_exhausted", "worker_stop_requested",
 }
 
 
@@ -146,6 +146,10 @@ class Replay:
             return f"[{wid}] 响应被 max_tokens 截断（第 {event.get('round')} 轮）"
         if kind == "run_budget_exhausted":
             return f"[{wid}] 总预算用尽：{event.get('total_tokens')}/{event.get('limit')}"
+        if kind == "worker_stop_requested":
+            by = event.get("by")
+            extra = f"（由 {by} 请求）" if by else ""
+            return f"[{wid}] 收到停止请求{extra}"
         if kind == "run_resumed":
             return f"续跑：历史 workers={event.get('workers')} 下一个序号={event.get('next_seq')}"
         if kind == "run_finished":

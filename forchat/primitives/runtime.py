@@ -143,6 +143,18 @@ TOOL_SPECS: dict[str, dict] = {
             },
         },
     },
+    "stop_worker": {
+        "type": "function",
+        "function": {
+            "name": "stop_worker",
+            "description": "请求停止一个仍在运行的 worker（协作式：它在下一个分片/下一轮边界退出）。",
+            "parameters": {
+                "type": "object",
+                "properties": {"worker_id": {"type": "string"}},
+                "required": ["worker_id"],
+            },
+        },
+    },
 }
 
 
@@ -193,6 +205,7 @@ class Runtime:
         self.workers: dict[str, WorkerInstance] = {}
         self._lock = threading.RLock()
         self._futures: dict[str, Any] = {}          # worker_id -> Future（异步分支的 join 用）
+        self._stop_events: dict[str, Any] = {}      # worker_id -> threading.Event（协作式取消）
         self._seq = 0
         self.started_at = time.time()
         self._restored: list[str] = []
@@ -379,6 +392,11 @@ class Runtime:
             if tpl.max_rounds is not None and rnd >= tpl.max_rounds:
                 reason = "max_rounds"
                 break
+            stop_event = self._stop_events.get(worker.id)
+            if stop_event is not None and stop_event.is_set():
+                reason = "stopped"
+                self.log.append("worker_stop_requested", worker_id=worker.id, round=rnd)
+                break
             rnd += 1
             # 墙钟要按轮次记账，否则 wall_seconds 只有在 worker 结束后才生效
             now = time.time()
@@ -412,6 +430,11 @@ class Runtime:
             worker.budget.charge(tokens=usage)
             self._charge_total(usage)
             last_text = text
+
+            stop_event = self._stop_events.get(worker.id)
+            if stop_event is not None and stop_event.is_set():
+                reason = "stopped"
+                break
 
             if not calls:
                 reason = "stop"
@@ -449,10 +472,16 @@ class Runtime:
     def _finish(self, worker: WorkerInstance, reason: str, reported: bool, last_text: str = "") -> None:
         if worker.report is None:
             worker.report = self._fallback_report(worker, last_text)
+        if reason == "stopped":
+            status = "killed"
+        elif reported:
+            status = "done"
+        else:
+            status = "failed"
         # 只有真的调用过 report 才算完成；跑满轮次/超预算/只说话不交报告都不算
-        worker.report.status = "done" if reported else "failed"
+        worker.report.status = "done" if status == "done" else "failed"
         worker.report.budget = worker.budget.snapshot()
-        worker.status = "done" if reported else "failed"
+        worker.status = status
         self.log.append(
             "worker_done",
             worker_id=worker.id,
@@ -472,7 +501,13 @@ class Runtime:
         pending: dict[int, dict] = {}
         usage = 0
 
+        stop_event = self._stop_events.setdefault(worker.id, threading.Event())
+
         for chunk in self.provider.stream(self.model, messages, self._tool_specs(tpl)):
+            if stop_event.is_set():
+                # 协作式取消：只能做到"下一个分片到达时停"，在途网络请求没法硬杀
+                self.log.append("worker_stop_requested", worker_id=worker.id, round=rnd)
+                break
             usage += int(chunk.get("usage", {}).get("completion_tokens", 0))
             choices = chunk.get("choices") or []
             if not choices:
@@ -543,6 +578,7 @@ class Runtime:
             "write_artifact": self._tool_write_artifact,
             "read_worker_report": self._tool_read_worker_report,
             "wait_workers": self._tool_wait_workers,
+            "stop_worker": self._tool_stop_worker,
         }.get(name)
         if handler is None:
             if name not in self.external:
@@ -636,6 +672,19 @@ class Runtime:
                 summary = (target.report.summary if target.report else "")[:160]
                 lines.append(f"- {wid}: {target.status} — {summary or '（无报告）'}")
         return "\n".join(lines)
+
+    def _tool_stop_worker(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        target_id = str(args.get("worker_id") or "")
+        target = self.workers.get(target_id)
+        if target is None:
+            return f"错误：没有 worker {target_id}"
+        if target.status in ("done", "failed", "killed"):
+            return f"worker {target_id} 已结束（{target.status}）"
+
+        event = self._stop_events.setdefault(target_id, threading.Event())
+        event.set()
+        self.log.append("worker_stop_requested", worker_id=target_id, by=worker.id)
+        return f"已请求停止 {target_id}（协作式：下一分片/下一轮退出，不会立刻杀掉）"
 
     def _tool_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         declared = [str(a) for a in args.get("artifacts") or []]

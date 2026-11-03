@@ -785,6 +785,40 @@ def test_spawn_cannot_grant_beyond_scope() -> None:
     assert len(runtime.workers) == 1, runtime.workers
 
 
+def test_stop_worker_kills_running_child() -> None:
+    """父 worker 可以叫停后台分支：子 worker 状态 killed，事件留痕。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["spawn", "stop_worker", "wait_workers", "report"]
+    raw["workers"]["root"]["can_spawn"] = ["coder"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    long_stream = [
+        {"choices": [{"delta": {"content": "x"}}]} for _ in range(200)
+    ] + [{"choices": [{"delta": {}, "finish_reason": "stop"}]}]
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("spawn", {"template": "coder", "task": "慢任务", "wait": False})]),
+                tool_chunks([("stop_worker", {"worker_id": "n002-coder"})]),
+                tool_chunks([("wait_workers", {"timeout_seconds": 20})]),
+                tool_chunks([("report", {"summary": "已叫停慢分支"})]),
+            ],
+            "coder": [long_stream],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder, delay=0.02), tmpdir())
+    root = runtime.start("任务")
+
+    coder = runtime.workers["n002-coder"]
+    assert coder.status == "killed", coder.status
+    assert runtime.log.query(type="worker_stop_requested")
+    assert root.status == "done"
+    summary = Replay(runtime.log).summary()
+    assert "killed" in summary
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
@@ -823,6 +857,7 @@ def main() -> int:
         ("总预算闸", test_total_budget_caps_whole_run),
         ("workflow 拒绝未知技能", test_workflow_rejects_unknown_skill),
         ("越权授权被拒", test_spawn_cannot_grant_beyond_scope),
+        ("stop_worker 叫停分支", test_stop_worker_kills_running_child),
     ]
     return run("原语自检", checks)
 

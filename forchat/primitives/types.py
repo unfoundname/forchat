@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-Status = Literal["pending", "running", "done", "failed"]
+Status = Literal["pending", "running", "done", "failed", "killed"]
 
 
 @dataclass

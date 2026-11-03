@@ -141,9 +141,10 @@ examples/workflows/minimal/
 
 `run_finished` 事件里会记 `total_tokens` 与 `budget_limit`，`--inspect` 能看到。
 
-运行时只给模型七个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
+运行时只给模型八个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
-`read_worker_report`（父 worker 回看子报告）、`wait_workers`（汇合 `spawn(wait=false)` 的异步分支）。
+`read_worker_report`（父 worker 回看子报告）、`wait_workers`（汇合 `spawn(wait=false)` 的异步分支）、
+`stop_worker`（协作式叫停：下一分片/下一轮边界退出，状态记为 `killed`）。
 
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 
@@ -220,6 +221,8 @@ def upper(text: str) -> str:
   （已流出去的内容不能重来）；次数用 `FORCHAT_RETRIES` 控制，默认 2；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
 - 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完；
+- **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`
+  （不会硬杀线程；在途网络请求也不会立刻断）；
 - 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。
 
 provider 的两个硬参数（真模型）：
