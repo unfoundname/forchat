@@ -174,6 +174,13 @@ class RunManager:
         tokens = sum(int(item["tokens"] or 0) for item in runs)
         cost = sum(float(item["cost_usd"] or 0) for item in runs)
         stuck = sum(len(rt.stuck_workers()) for rt in list(self._runtimes.values()))
+        status_counts: dict[str, int] = {}
+        for item in runs:
+            status_counts[str(item["status"])] = status_counts.get(str(item["status"]), 0) + 1
+        status_lines = "".join(
+            f'forchat_runs_by_status{{status="{status}"}} {count}\n'
+            for status, count in sorted(status_counts.items())
+        )
         text = (
             "# HELP forchat_runs_total Total runs known to this server.\n"
             "# TYPE forchat_runs_total gauge\n"
@@ -193,6 +200,9 @@ class RunManager:
             "# HELP forchat_stuck_workers Live workers without a recent heartbeat.\n"
             "# TYPE forchat_stuck_workers gauge\n"
             f"forchat_stuck_workers {stuck}\n"
+            "# HELP forchat_runs_by_status Runs grouped by final status.\n"
+            "# TYPE forchat_runs_by_status gauge\n"
+            f"{status_lines}"
         )
         self._metrics_cache = (now, text)
         return text

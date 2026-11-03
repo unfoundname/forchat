@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from pathlib import Path
@@ -100,6 +101,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         self._interrupted: list[str] = []
         self._root_id: str | None = None
         self._beats: dict[str, float] = {}          # worker_id -> 最后一次心跳时间
+        self._stuck_reported: set[str] = set()
         self._restore()
     def _deadline_exceeded(self) -> bool:
         return self.run_deadline is not None and time.time() > self.run_deadline
@@ -164,6 +166,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         if root is None:
             raise RuntimeError("根 worker 创建失败，检查 workflow 配置")
 
+        watchdog = self._start_watchdog()
         status = "done"
         try:
             self._run_worker(root)
@@ -171,6 +174,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
             status = "aborted"
             raise
         finally:
+            watchdog.set()
             # 无论成功还是异常，都要收掉线程池并留下"运行结束"事件，否则事件流读不出结尾
             self.scheduler.shutdown()
             final_status = status
@@ -270,6 +274,33 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
                     result.append({"worker_id": wid, "status": item.status,
                                    "idle_seconds": idle})
             return result
+
+    def _start_watchdog(self) -> threading.Event:
+        """后台看门狗：发现长时间没心跳的 worker → 记事件；action=stop 时直接停。"""
+        stop = threading.Event()
+        try:
+            threshold = float(os.environ.get("FORCHAT_STUCK_SECONDS", "600"))
+        except ValueError:
+            threshold = 600.0
+        if threshold <= 0:
+            return stop
+
+        def _watch() -> None:
+            interval = max(0.05, min(30.0, threshold / 4))
+            while not stop.wait(interval):
+                for item in self.stuck_workers(threshold):
+                    worker_id = item["worker_id"]
+                    if item.get("status") != "running" or worker_id in self._stuck_reported:
+                        continue
+                    self._stuck_reported.add(worker_id)
+                    action = os.environ.get("FORCHAT_STUCK_ACTION", "log")
+                    self.log.append("stuck_detected", worker_id=worker_id,
+                                    idle_seconds=item.get("idle_seconds"), action=action)
+                    if action == "stop":
+                        self.force_stop(worker_id)
+
+        threading.Thread(target=_watch, name="forchat-watchdog", daemon=True).start()
+        return stop
 
     # ------------------------------------------------------------------ 资源感知
     def resources(self) -> dict[str, Any]:

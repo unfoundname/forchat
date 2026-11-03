@@ -51,14 +51,14 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 117 条用例（CI 用这个）
+pytest -q                    # 118 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
 - `tests/test_primitives.py`：13 条（预算/配置校验/跨进程事件流/工具事件分离）
 - `tests/test_primitives_flows.py`：15 条（派生/hook/并发/契约冻结/report 门禁）
 - `tests/test_primitives_lifecycle.py`：3 条（restart/每 worker 事实）
-- `tests/test_primitives_resources.py`：9 条（compact/保留配置/资源感知/排队/心跳）
+- `tests/test_primitives_resources.py`：10 条（compact/保留配置/资源感知/排队/心跳/看门狗）
 - `tests/test_primitives_state.py`：11 条（状态/续跑/自动恢复/运行图）
 - `tests/test_primitives_guards.py`：8 条（scope/停止/快照/重试）
 - `tests/test_tools.py`：18 条（registry/provider/重试/成本/read/edit/grep/glob/web_fetch/run_checks）

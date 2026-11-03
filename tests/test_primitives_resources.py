@@ -294,6 +294,41 @@ def test_heartbeat_recorded_during_run() -> None:
     assert runtime._beats.get("n001-root") is not None
 
 
+def test_stuck_watchdog_auto_stops() -> None:
+    """FORCHAT_STUCK_ACTION=stop：心跳超时的 worker 被看门狗自动停掉。"""
+    import os
+    import threading
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    chunks = [{"choices": [{"delta": {"content": "x"}}]} for _ in range(50)]
+    provider = FakeProvider(TemplateResponder({"root": [chunks]}), delay=0.3)
+    old_seconds = os.environ.get("FORCHAT_STUCK_SECONDS")
+    old_action = os.environ.get("FORCHAT_STUCK_ACTION")
+    os.environ["FORCHAT_STUCK_SECONDS"] = "0.3"
+    os.environ["FORCHAT_STUCK_ACTION"] = "stop"
+    try:
+        runtime = Runtime(workflow, provider, tmpdir())
+        thread = threading.Thread(target=runtime.start, args=("任务",))
+        thread.start()
+        thread.join(timeout=10)
+    finally:
+        for key, old in (("FORCHAT_STUCK_SECONDS", old_seconds),
+                         ("FORCHAT_STUCK_ACTION", old_action)):
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
+
+    assert not thread.is_alive()
+    assert runtime.log.query(type="stuck_detected"), "应当记录卡死事件"
+    assert runtime.workers["n001-root"].status in ("killed", "failed")
+
+
 def main() -> int:
     checks = [
         ("长会话 compact 归档", test_context_trimmed_for_long_sessions),
@@ -301,6 +336,7 @@ def main() -> int:
         ("compact 归档保留配置", test_compact_archive_retention_configurable),
         ("stuck 检测", test_stuck_worker_detection),
         ("运行期心跳", test_heartbeat_recorded_during_run),
+        ("看门狗自动停卡死", test_stuck_watchdog_auto_stops),
         ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
         ("资源余量可见", test_resources_visible_to_worker),
         ("预算低时裁剪收紧", test_context_trim_tightens_when_budget_low),
