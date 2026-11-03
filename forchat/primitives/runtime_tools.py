@@ -52,7 +52,6 @@ class ToolsMixin:
             "read_worker_report": self._tool_read_worker_report,
             "wait_workers": self._tool_wait_workers,
             "stop_worker": self._tool_stop_worker,
-            "fork": self._tool_fork,
             "restart": self._tool_restart,
             "write_fact": self._tool_write_fact,
             "read_facts": self._tool_read_facts,
@@ -119,44 +118,13 @@ class ToolsMixin:
         future = self.scheduler.submit(self._run_worker, child, resume)
         self._futures[child.id] = future
 
-    def _tool_fork(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
-        target = self.workers.get(str(args.get("worker_id") or ""))
-        if target is None:
-            return f"错误：没有 worker {args.get('worker_id')}"
-        if target.template not in tpl.can_spawn:
-            return f"错误：{tpl.name} 不能派生 {target.template}（fork 同样受 can_spawn 约束）"
-        path = self._worker_state_path(target.id)
-        if not path.is_file():
-            return f"错误：{target.id} 还没有执行快照，无法 fork；可以改用 restart"
-        try:
-            state = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return f"错误：{target.id} 的快照读不出来"
-
-        task = str(args.get("task") or f"{target.task}（fork 自 {target.id}）")
-        child = self._create_worker(target.template, task, parent=worker,
-                                    depth=worker.depth + 1, scope=target.scope or None)
-        if child is None:
-            return f"错误：fork 被资源限制拒绝{self._resource_line()}"
-        self.log.append("worker_forked", worker_id=child.id, source=target.id, by=worker.id)
-        # fork 复制一份源 worker 的事实，之后两条分支各写各的
-        child.facts_owner = child.id
-        for name, content in self.load_facts(self.facts_owner(target)).items():
-            try:
-                self.save_fact(child.id, name, content)
-            except ValueError:
-                break
-        if bool(args.get("wait", True)):
-            self._run_worker(child, resume=state)
-            summary = (child.report.summary if child.report else "")[:300]
-            return f"fork {child.id} 完成，status={child.status}；report: {summary}"
-        self._submit(child, resume=state)
-        return f"fork {child.id} 已在后台启动；用 wait_workers 汇合"
-
     def _tool_restart(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         target = self.workers.get(str(args.get("worker_id") or ""))
         if target is None:
             return f"错误：没有 worker {args.get('worker_id')}"
+        if target.parent_id != worker.id:
+            return (f"错误：restart 只能由父 worker 对自己**直接子** worker 发起"
+                    f"（{target.id} 的父是 {target.parent_id or '根'}，不是你）")
         if target.template not in tpl.can_spawn:
             return f"错误：{tpl.name} 不能派生 {target.template}"
 

@@ -51,7 +51,7 @@ ForChat/
 │   ├── test_primitives.py      原语：预算/配置校验（11 条）
 │   ├── test_primitives_flows.py    原语：派生/hook/并发（13 条）
 │   ├── test_primitives_resources.py 原语：上下文裁剪/资源感知/排队（5 条）
-│   ├── test_primitives_lifecycle.py 原语：fork/restart/每 worker 事实（4 条）
+│   ├── test_primitives_lifecycle.py 原语：restart/每 worker 事实（3 条）
 │   ├── test_primitives_state.py    原语：状态/续跑/运行图（11 条）
 │   ├── test_primitives_guards.py   原语：scope/停止/快照/重试（8 条）
 │   ├── test_tools.py           工具：registry/provider/重试/成本（12 条）
@@ -81,7 +81,7 @@ pytest -q                          # 同一批用例走 pytest（CI 用的就是
 python tests/test_primitives.py    # 原语：预算/配置校验
 python tests/test_primitives_flows.py   # 原语：派生/hook/并发
 python tests/test_primitives_resources.py   # 原语：上下文裁剪/资源感知/排队
-python tests/test_primitives_lifecycle.py   # 原语：fork/restart/事实
+python tests/test_primitives_lifecycle.py   # 原语：restart/事实
 python tests/test_primitives_state.py   # 原语：状态/续跑/运行图
 python tests/test_primitives_guards.py  # 原语：scope/停止/快照/重试
 python tests/test_tools.py         # 工具：registry/provider/重试/成本
@@ -178,12 +178,11 @@ examples/workflows/minimal/
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
 `read_worker_report`（父 worker 回看子报告）、`wait_workers`（汇合 `spawn(wait=false)` 的异步分支）、
 `stop_worker`（协作式叫停：下一分片/下一轮边界退出，状态记为 `killed`）、
-`fork`（从某个 worker 的快照分叉一个新 agent，继承对话，用来并行试不同方案）、
 `restart`（同模板/任务/范围全新开一个 agent，丢掉旧对话——上下文涣散时比硬喂更划算）、
 `write_fact` / `read_facts`（跨 agent 的共享事实库，落盘 `state.json`，新 agent 的系统提示里自动带）。
 
-**agent 生命周期**：`spawn` 新开、`fork` 分叉（继承快照）、`restart` 重开（全新会话）、`stop_worker` 叫停；
-**事实库**是"重启也不丢"的那一层：`write_fact("构建命令", "pytest -q")` 之后，`restart`/`fork`/`--resume` 出的
+**agent 生命周期**：`spawn` 新开、`restart` 由父 worker 重开自己的直接子 worker（全新会话）、`stop_worker` 叫停；
+**事实库**是"重启也不丢"的那一层：`write_fact("构建命令", "pytest -q")` 之后，`restart`/`--resume` 出的
 agent 在系统提示里都能看到它，不必靠对话记忆。
 
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。

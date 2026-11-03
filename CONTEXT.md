@@ -35,8 +35,7 @@
 - **Replay**：只读重建一次运行——`review()` 流水账、`tree()` 派生树、`summary()` 每个 worker 的消耗与摘要。
 - **续跑（resume）**：同一 run 目录再次运行。历史 worker 只读、序号接着涨，根 worker 的系统提示里带历史摘要。
 - **中断（interrupted）**：上次进程崩溃/被杀时没有 `worker_done` 的 worker；`--resume` 会从快照自动恢复整棵树（深的先恢复，根有快照则续跑根），`--resume-worker` 可单点恢复。
-- **fork**：从某个 worker 的执行快照复制一份对话，起一个新 worker 走不同方案；受 `can_spawn` 约束。
-- **restart**：同模板/任务/范围重开一个全新 agent（丢旧对话）；上下文涣散时用它，比 continue 便宜。
+- **restart**：父 worker 对自己直接子 worker 的操作：同模板/任务/范围重开一个全新 agent（丢旧对话）；上下文涣散时用它。
 - **事实（fact）**：跨 agent 共享的硬结论，落盘 `state.json["facts"]`，新 agent 系统提示里自动带（上限 20k 字符）。
 - **成本**：按 `pricing.json` 的价目表把 prompt/completion token 换算成美元；没有价目表时明确为"未知"，不记 0。
 - **围栏（fence）**：能力限制，优先于事后熔断。递归靠 `can_spawn` 为空来杜绝，不是靠层数。

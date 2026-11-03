@@ -117,5 +117,5 @@ class WorkerInstance:
     # 授权范围（相对项目根的目录）。空 = 整个项目根；非空 = 只允许在这些目录内改动
     scope: list[str] = field(default_factory=list)
     retries_used: int = 0
-    # 事实归属：restart 复用同一个逻辑 worker 的事实；fork 复制一份后归自己；空 = 自己
+    # 事实归属：restart 复用同一个 worker 的事实；空 = 自己
     facts_owner: str = ""
