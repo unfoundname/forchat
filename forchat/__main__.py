@@ -28,7 +28,35 @@ USAGE = """用法:
   python -m forchat --skills    列出已加载技能
   python -m forchat --mcp       连接 mcp_servers.json 里的服务端
   python -m forchat --inspect <run-dir>   复查一次历史运行
+  python -m forchat --check <workflow>   只校验 workflow 配置，不跑模型
 """
+
+
+def _check(path: Path) -> int:
+    from .skills import load_skills
+    from .tool_bridge import known_names
+
+    connect_from_config()          # 让校验看得到 MCP 工具；失败不影响本地工具
+    try:
+        workflow = WorkflowDef.load(
+            path, known_tools=known_names(), known_skills=set(load_skills())
+        )
+    except WorkflowError as exc:
+        print(f"[check] 失败：{exc}")
+        return 2
+    finally:
+        close_all()
+
+    print(f"[check] ok  name={workflow.name} version={workflow.version} entry={workflow.entry}")
+    print(f"[check] limits={workflow.limits}")
+    for name, tpl in workflow.workers.items():
+        spawn = ", ".join(tpl.can_spawn) if tpl.can_spawn else "（叶子）"
+        rounds = tpl.max_rounds if tpl.max_rounds is not None else "不限"
+        print(
+            f"  {name:12} spawn-> {spawn:20} tools={len(tpl.tools):2} "
+            f"skills={tpl.skills or '[]'} max_rounds={rounds}"
+        )
+    return 0
 
 
 def _inspect(run_dir: Path) -> int:
@@ -130,6 +158,11 @@ def main() -> None:
             print("--inspect 需要一个运行目录，例如 .runs/minimal-20261103-130000")
             return
         raise SystemExit(_inspect(Path(args[1])))
+    if args and args[0] == "--check":
+        if len(args) < 2:
+            print("--check 需要一个 workflow 路径")
+            return
+        raise SystemExit(_check(Path(args[1])))
 
     workflow_path = DEFAULT_WORKFLOW
     if args[:1] == ["--workflow"]:

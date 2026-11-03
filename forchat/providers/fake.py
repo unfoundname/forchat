@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from typing import Any, Callable, Iterator
 
 Responder = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
@@ -44,21 +46,28 @@ def tool_chunks(calls: list[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]
 
 
 class FakeProvider:
-    """script 可以是分片列表的列表（按调用顺序），也可以是一个 responder(messages)。"""
+    """script 可以是分片列表的列表（按调用顺序），也可以是一个 responder(messages)。
+
+    delay 用来模拟真实模型的分片间隔，测并发时会用到。
+    """
 
     name = "fake"
 
-    def __init__(self, script: list[Any] | Responder) -> None:
+    def __init__(self, script: list[Any] | Responder, delay: float = 0.0) -> None:
         self._script = script
+        self.delay = delay
         self.calls = 0
         self.seen: list[list[dict[str, Any]]] = []
+        self._lock = threading.Lock()
 
     def stream(
         self, model: str, messages: list[dict[str, Any]], tools: list[dict] | None = None
     ) -> Iterator[dict[str, Any]]:
         self.seen.append(messages)
-        index = self.calls
-        self.calls += 1
+        # 并行分支会同时调用 stream，取脚本下标必须加锁，否则会重号
+        with self._lock:
+            index = self.calls
+            self.calls += 1
 
         if callable(self._script):
             chunks = self._script(messages)
@@ -66,7 +75,10 @@ class FakeProvider:
             if index >= len(self._script):
                 raise RuntimeError(f"fake script 用完了（第 {index + 1} 次调用）")
             chunks = self._script[index]
-        yield from chunks
+        for chunk in chunks:
+            if self.delay:
+                time.sleep(self.delay)
+            yield chunk
 
 
 class TemplateResponder:
@@ -75,14 +87,16 @@ class TemplateResponder:
     def __init__(self, table: dict[str, list[list[dict[str, Any]]]]) -> None:
         self.table = table
         self.counters: dict[str, int] = {}
+        self._lock = threading.Lock()
 
     def __call__(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         system = messages[0].get("content", "")
         template = next((name for name in self.table if f"模板 {name}" in system), None)
         if template is None:
             raise RuntimeError(f"没有为这段系统提示配置响应：{system[:80]}")
-        index = self.counters.get(template, 0)
-        self.counters[template] = index + 1
+        with self._lock:
+            index = self.counters.get(template, 0)
+            self.counters[template] = index + 1
         script = self.table[template]
         if index >= len(script):
             raise RuntimeError(f"模板 {template} 的脚本用完了（第 {index + 1} 次）")

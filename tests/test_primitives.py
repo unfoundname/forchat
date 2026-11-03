@@ -485,6 +485,78 @@ def test_replay_summary() -> None:
     assert "root" in summary and "done" in summary
 
 
+def test_parallel_spawn_and_log_integrity() -> None:
+    """wait=False 的两个分支真并行；并行写事件流不能写出半行。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["can_spawn"] = ["coder"]
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    coder_reply = tool_chunks([("report", {"summary": "分支完成"})])
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks(
+                    [
+                        ("spawn", {"template": "coder", "task": "A", "wait": False}),
+                        ("spawn", {"template": "coder", "task": "B", "wait": False}),
+                    ]
+                ),
+                tool_chunks([("report", {"summary": "两个分支已启动"})]),
+            ],
+            "coder": [coder_reply, coder_reply],
+        }
+    )
+    run_dir = tmpdir()
+    runtime = Runtime(
+        workflow, FakeProvider(responder, delay=0.02), run_dir, max_concurrent=2
+    )
+    runtime.start("并行任务")
+
+    coders = [w for w in runtime.workers.values() if w.template == "coder"]
+    assert len(coders) == 2, runtime.workers
+    assert all(w.status == "done" for w in coders)
+    assert runtime.scheduler.stats()["peak_running"] == 2, runtime.scheduler.stats()
+
+    lines = (Path(run_dir) / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    for line in lines:
+        if line.strip():
+            json.loads(line)          # 半行会在这里抛 JSONDecodeError
+
+
+def test_deepseek_provider_maps_chunks() -> None:
+    """真 provider 的映射：chunk -> dict、usage 开关、tools 透传。"""
+    from types import SimpleNamespace
+
+    from forchat.providers.deepseek import DeepSeekProvider
+
+    captured: dict = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            chunk = SimpleNamespace(
+                model_dump=lambda exclude_none=True: {
+                    "choices": [{"delta": {"content": "hi"}}]
+                }
+            )
+            return iter([chunk])
+
+    provider = DeepSeekProvider(api_key="test-key", thinking=True)
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+
+    chunks = list(
+        provider.stream("deepseek-flash", [{"role": "user", "content": "x"}], tools=[{"type": "function"}])
+    )
+    assert chunks[0]["choices"][0]["delta"]["content"] == "hi"
+    assert captured["stream"] is True
+    assert captured["stream_options"] == {"include_usage": True}
+    assert captured["tools"] == [{"type": "function"}]
+    assert captured["extra_body"] == {"thinking": {"type": "enabled"}}
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -511,6 +583,8 @@ def main() -> int:
         ("运行时执行护栏", test_runtime_guard_blocks_tool),
         ("调度器并发上限", test_scheduler_concurrency_limit),
         ("replay summary", test_replay_summary),
+        ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
+        ("deepseek provider 映射", test_deepseek_provider_maps_chunks),
     ]
     failed = 0
     for name, fn in checks:

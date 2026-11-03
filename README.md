@@ -55,6 +55,7 @@ python -m forchat --tools          # 能力工具（含 MCP）
 python -m forchat --skills         # 技能
 python -m forchat --mcp            # 连 MCP 服务端
 python -m forchat --inspect .runs/<run>   # 复查一次历史运行（树 + 每个 worker 的消耗与摘要）
+python -m forchat --check examples/workflows/minimal/workflow.json   # 只校验配置，不跑模型
 ```
 
 ## 三层
