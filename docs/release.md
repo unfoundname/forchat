@@ -54,7 +54,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q --cov=forchat --cov-fail-under=65   # 157 条用例 + 覆盖率门槛（CI 用这个）
+pytest -q --cov=forchat --cov-fail-under=65   # 158 条用例 + 覆盖率门槛（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 

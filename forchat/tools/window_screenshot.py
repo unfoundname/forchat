@@ -18,7 +18,21 @@ from ..registry import tool
 WINDOWS = sys.platform == "win32"
 PW_RENDERFULLCONTENT = 0x2
 
+
+def _enable_dpi_awareness() -> None:
+    """必须在取窗口坐标前开启，否则 GetWindowRect 给的是缩放后的逻辑尺寸，
+    PrintWindow 会把窗口右侧/底部裁掉（高 DPI 下常见）。"""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)   # per-monitor v2
+    except Exception:                                  # noqa: BLE001
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:                              # noqa: BLE001
+            pass
+
+
 if WINDOWS:
+    _enable_dpi_awareness()
     _user32 = ctypes.windll.user32
     _gdi32 = ctypes.windll.gdi32
     _WNDENUMPROC = ctypes.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)

@@ -105,6 +105,19 @@ def test_page_screenshot_blocks_private() -> None:
     assert "拒绝访问内网" in out
 
 
+def test_dpi_awareness_enabled() -> None:
+    """高 DPI 下必须 DPI-aware，否则 GetWindowRect 缩水、PrintWindow 裁掉右侧。"""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    try:
+        context = user32.GetThreadDpiAwarenessContext()
+        awareness = user32.GetAwarenessFromDpiAwarenessContext(context)
+    except Exception:                                  # noqa: BLE001
+        return                                          # 旧系统没有该 API
+    assert awareness >= 1, f"DPI awareness={awareness}，窗口截图会被裁边"
+
+
 def main() -> int:
     if not WINDOWS:
         print("跳过：截图能力只在 Windows 桌面验证")
@@ -113,6 +126,7 @@ def main() -> int:
         ("窗口截图（无浏览器）", test_window_screenshot_own_app),
         ("无头网页截图", test_headless_page_screenshot),
         ("内网地址被拒", test_page_screenshot_blocks_private),
+        ("DPI awareness", test_dpi_awareness_enabled),
     ]
     return run("截图能力自检", checks)
 
