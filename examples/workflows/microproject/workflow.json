@@ -1,0 +1,33 @@
+{
+  "name": "microproject",
+  "version": 1,
+  "entry": "root",
+  "limits": {
+    "max_concurrent": 2,
+    "max_depth": 2,
+    "max_workers": 4,
+    "max_wall_seconds": 900
+  },
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": ["coder"],
+      "tools": ["spawn", "report", "read", "run_python", "git", "read_state", "write_note", "read_worker_report"],
+      "budget": {"tokens": 30000, "wall_seconds": 600}
+    },
+    "coder": {
+      "role_file": "prompts/coder.md",
+      "can_spawn": [],
+      "tools": ["write_file", "read", "run_python", "report", "read_state"],
+      "hooks": {
+        "on_done": [{"spawn": "verifier", "task": "验收 {worker_id} 的产出", "wait": true}]
+      },
+      "budget": {"tokens": 30000, "wall_seconds": 600}
+    },
+    "verifier": {
+      "role_file": "prompts/verifier.md",
+      "can_spawn": [],
+      "tools": ["read", "run_python", "report"]
+    }
+  }
+}

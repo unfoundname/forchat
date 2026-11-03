@@ -30,6 +30,8 @@ ForChat/
 │   ├── workflows/delivery/     交付示例：coder 落盘 → hook 派生 reviewer → root 用 git 核对
 │   ├── workflows/worktree/     worktree 并行示例：两个 coder 各建 worktree + 分支 + 提交
 │   ├── workflows/merge/        串行合并示例：把多个 feat 分支合进 integration 分支
+│   ├── workflows/microproject/ 真项目示例：写代码 + 测试 + 自动验收
+│   └── projects/wordcount/     microproject 的真实产出（15 条断言，真跑通过）
 │   ├── run_demo.py             端到端自检（假 provider，无需 key）
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
@@ -185,6 +187,24 @@ provider 的两个硬参数（真模型）：
 - 合完核对文件与 log 再 report；不碰 master、不 push，冲突则 `merge --abort` 并写进 `unresolved`。
 
 真跑过一次：`feat-a`、`feat-b` 依次合入 integration，两个 merge 提交（`6376851`、`665445a`），无冲突。
+
+## 用一个真项目验证（示例）
+
+`examples/workflows/microproject` 的产出留在了 `examples/projects/wordcount/`：
+
+- root 派 coder 写 `wordcount.py` + `test_wordcount.py`；
+- coder 的 `on_done` hook 自动派生 verifier 复查；
+- root 再亲手用 `run_python` 复跑测试、用 `read` 读源码，确认不是 `assert True`。
+
+作者本人独立复跑过（不看模型报告）：
+
+```
+python examples/projects/wordcount/test_wordcount.py     -> ALL PASS (15 tests), exit 0
+python examples/projects/wordcount/wordcount.py README.md -n 3
+py: 24 / forchat: 22 / worker: 20
+```
+
+运行结束后 `git status` 只多出未跟踪目录，没有改动任何已有文件。
 
 ## 续跑
 
