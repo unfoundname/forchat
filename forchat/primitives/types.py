@@ -10,8 +10,6 @@ from typing import Any, Literal
 
 Status = Literal["pending", "running", "waiting", "done", "failed", "killed"]
 
-TERMINAL = {"done", "failed", "killed"}
-
 
 @dataclass
 class Budget:
@@ -93,7 +91,3 @@ class WorkerInstance:
     status: Status = "pending"
     budget: Budget = field(default_factory=Budget)
     report: Report | None = None
-
-    @property
-    def terminal(self) -> bool:
-        return self.status in TERMINAL

@@ -251,6 +251,36 @@ def test_registry_bridge_read() -> None:
     assert any("hello from disk" in event["result"] for event in results), results
 
 
+def test_workflow_rejects_unknown_skill() -> None:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["skills"] = ["nope"]
+    try:
+        WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent, known_skills={"code-review"})
+    except WorkflowError as exc:
+        assert "nope" in str(exc)
+        return
+    raise AssertionError("挂载不存在的技能应当报错")
+
+
+def test_skill_mounted_into_prompt() -> None:
+    """技能是配置挂载：正文由装配层注入，原语层只拿到 name -> body。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["skills"] = ["demo"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["tools"] = ["report"]
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent, known_skills={"demo"})
+
+    provider = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("report", {"summary": "ok"})])]})
+    )
+    runtime = Runtime(workflow, provider, tmpdir(), skill_loader=lambda name: f"BODY-{name}")
+    runtime.start("任务")
+
+    system = provider.seen[0][0]["content"]
+    assert "已挂载技能" in system and "BODY-demo" in system, system
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -265,6 +295,8 @@ def main() -> int:
         ("replay：review 与 tree", test_replay_review_and_tree),
         ("能力工具桥接：外部工具注入", test_external_tools_bridge),
         ("能力工具桥接：registry 的 read", test_registry_bridge_read),
+        ("workflow 拒绝未知技能", test_workflow_rejects_unknown_skill),
+        ("技能挂载进系统提示", test_skill_mounted_into_prompt),
     ]
     failed = 0
     for name, fn in checks:

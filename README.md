@@ -7,11 +7,9 @@
 
 ```
 ForChat/
-├── AGENTS.md                   给 agent 的工作规则（三条硬规则）
+├── AGENTS.md                   给 agent 的工作规则（四条硬规则）
 ├── CONTEXT.md                  领域词汇表：三层、worker、fence、report…
-├── docs/
-│   ├── architecture.md         分层与迁移计划
-│   └── decisions/              ADR
+├── docs/decisions/             ADR
 ├── forchat/
 │   ├── __main__.py             CLI：只装配，不执行
 │   ├── primitives/             ★ 原语层（唯一执行循环在这里）
@@ -111,7 +109,11 @@ def upper(text: str) -> str:
 
 ## 技能
 
-`skills/<名字>/SKILL.md`，frontmatter 只有 `name` / `description`，正文按需注入（渐进式披露）。技能可以带脚本，用 `run_python` 跑，见 `skills/code-graph/`。
+`skills/<名字>/SKILL.md`，frontmatter 只有 `name` / `description`，正文是完整指令。
+
+在 workflow 里挂载：`"skills": ["code-graph"]`——worker 初始化时正文拼进它的系统提示。
+加载器由 `tool_bridge.build_skill_loader()` 注入，原语层只拿到 `name -> body` 的函数，
+不认识 SKILL.md 的格式。技能可以带脚本，用 `run_python` 跑，见 `skills/code-graph/`。
 
 ## MCP
 

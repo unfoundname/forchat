@@ -1,7 +1,7 @@
-"""Replay：从事件流重建一次运行。两种读法：
+"""Replay：从事件流重建一次运行（只读，不调模型，不重放）。
 
-- review()：人读的流水账（只读，不调模型）
-- tool_calls()：机器读的工具调用序列（供 rerun 用，重放不调模型）
+- review()：人读的流水账
+- tree()：worker 派生树
 """
 from __future__ import annotations
 
@@ -33,9 +33,6 @@ class Replay:
                 lines.append("...（截断）")
                 break
         return "\n".join(lines)
-
-    def tool_calls(self) -> list[dict[str, Any]]:
-        return self.log.query(type="tool_call")
 
     def tree(self) -> str:
         children: dict[str | None, list[str]] = {}

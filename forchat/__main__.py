@@ -49,11 +49,16 @@ def _list_skills() -> None:
 
 def _run_workflow(path: Path, goal: str) -> int:
     from .providers.deepseek import DeepSeekProvider
-    from .tool_bridge import build as build_tools, known_names
+    from .skills import load_skills
+    from .tool_bridge import build as build_tools, build_skill_loader, known_names
 
     connect_from_config()                      # 先连 MCP，它的工具才算"已有能力"
     try:
-        workflow = WorkflowDef.load(path, known_tools=known_names())
+        workflow = WorkflowDef.load(
+            path,
+            known_tools=known_names(),
+            known_skills=set(load_skills()),
+        )
     except WorkflowError as exc:
         print(f"workflow 配置有误：{exc}")
         return 2
@@ -64,6 +69,7 @@ def _run_workflow(path: Path, goal: str) -> int:
         DeepSeekProvider(),
         run_dir,
         external_tools=build_tools(),
+        skill_loader=build_skill_loader(),
     )
     print(f"[run] workflow={workflow.name} entry={workflow.entry} dir={run_dir}")
 

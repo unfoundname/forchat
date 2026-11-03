@@ -10,21 +10,6 @@ from typing import Any, Callable, Iterator
 Responder = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
 
 
-def text_chunks(text: str, thinking: str | None = None, size: int = 24) -> list[dict[str, Any]]:
-    chunks: list[dict[str, Any]] = []
-    if thinking:
-        chunks.append({"choices": [{"delta": {"reasoning_content": thinking}}]})
-    for start in range(0, len(text), size):
-        chunks.append({"choices": [{"delta": {"content": text[start:start + size]}}]})
-    chunks.append(
-        {
-            "choices": [{"delta": {}, "finish_reason": "stop"}],
-            "usage": {"completion_tokens": max(1, len(text) // 4)},
-        }
-    )
-    return chunks
-
-
 def tool_chunks(calls: list[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = [{"choices": [{"delta": {"role": "assistant", "content": ""}}]}]
     for index, (name, args) in enumerate(calls):

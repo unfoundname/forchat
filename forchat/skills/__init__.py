@@ -68,8 +68,3 @@ def load_skills() -> dict[str, Skill]:
         )
         found[name] = Skill(name=name, description=description, body=body, path=manifest)
     return found
-
-
-def catalog() -> str:
-    """给系统提示用的一行式目录。"""
-    return "\n".join(f"- {name}: {s.description}" for name, s in load_skills().items())

@@ -8,7 +8,7 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 
 class EventLog:
@@ -49,9 +49,6 @@ class EventLog:
             except json.JSONDecodeError:
                 continue
         return events
-
-    def iter_events(self) -> Iterator[dict[str, Any]]:
-        yield from self.read()
 
     def query(
         self,

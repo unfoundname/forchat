@@ -103,11 +103,6 @@ def register_external(
     )
 
 
-def specs() -> list[dict]:
-    """发给模型的 tools 参数。"""
-    return [t.to_spec() for t in REGISTRY.values()]
-
-
 def names() -> list[str]:
     return sorted(REGISTRY)
 

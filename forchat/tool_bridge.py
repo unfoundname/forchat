@@ -34,3 +34,15 @@ def build() -> ExternalTools:
 def known_names() -> set[str]:
     """workflow 校验时需要的"这台机器上现在有哪些能力工具"。"""
     return set(registry.names())
+
+
+def build_skill_loader() -> Callable[[str], str | None]:
+    """技能正文加载器：原语层只拿到 name -> body 的函数，不认识 SKILL.md 格式。"""
+
+    def load(name: str) -> str | None:
+        from .skills import load_skills
+
+        skill = load_skills().get(name)
+        return skill.body if skill else None
+
+    return load
