@@ -85,9 +85,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             time.sleep(args.poll)
             continue
-        task_id, payload = leased
+        task_id, payload, token = leased
         result = _run_task(task_id, payload, queue, args.agent_id)
-        queue.complete(task_id, args.agent_id, result)
+        if not queue.complete(task_id, args.agent_id, token, result):
+            print(f"[remote_agent] lease lost for {task_id}; result discarded",
+                  file=sys.stderr)
         if args.once:
             return 0
 

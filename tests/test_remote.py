@@ -171,11 +171,44 @@ def test_remote_cancel_marks_killed() -> None:
     assert runtime.workers["n002-coder"].status == "killed"
 
 
+def test_queue_fencing_and_idempotency() -> None:
+    """旧租约持有者写结果必须被拒；重复回传先写者赢。"""
+    from forchat.remote_queue import RemoteQueue
+
+    queue = RemoteQueue(tmpdir() / "remote", max_attempts=3)
+    queue.submit("t", {"worker": {"id": "t"}})
+    task_id, _payload, token1 = queue.lease("agent-a")
+    assert queue.requeue(task_id) is True
+    task_id, _payload, token2 = queue.lease("agent-b")
+
+    assert queue.complete(task_id, "agent-a", token1, {"status": "stale"}) is False
+    assert queue.result(task_id) is None
+    assert queue.complete(task_id, "agent-b", token2, {"status": "done"}) is True
+    assert queue.result(task_id)["status"] == "done"
+
+
+def test_queue_retry_limit() -> None:
+    """超过尝试上限进 dead，不会无限重派。"""
+    from forchat.remote_queue import RemoteQueue
+
+    queue = RemoteQueue(tmpdir() / "remote", max_attempts=2)
+    queue.submit("poison", {"worker": {"id": "poison"}})
+    task_id, _payload, _token = queue.lease("agent-a")
+    assert queue.requeue(task_id) is True
+    task_id, _payload, _token = queue.lease("agent-b")
+    assert queue.requeue(task_id) is False
+    dead = queue.dead_tasks()
+    assert dead and dead[0]["task_id"] == "poison"
+    assert queue.result(task_id) is None
+
+
 def main() -> int:
     checks = [
         ("队列租约 + agent", test_queue_lease_and_agent),
         ("Runtime 远程叶子", test_runtime_remote_leaf_worker),
         ("远程取消", test_remote_cancel_marks_killed),
+        ("租约 fencing / 幂等", test_queue_fencing_and_idempotency),
+        ("重试上限进 dead", test_queue_retry_limit),
     ]
     return run("分布式调度自检", checks)
 

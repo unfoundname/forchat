@@ -30,18 +30,28 @@ def run_checks(checks: list[dict], timeout_seconds: float = TIMEOUT) -> str:
     root = Path.cwd().resolve()
     results: list[str] = []
 
+    def _inside(path: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
     for item in checks:
         item = item or {}
         name = str(item.get("name") or item.get("script") or "?")
         script = str(item.get("script") or "")
         target = (root / script).resolve()
-        if not str(target).startswith(str(root)):
+        if not _inside(target):
             results.append(f"- {name}: FAIL（脚本越界）")
             continue
         if target.suffix != ".py" or not target.is_file():
             results.append(f"- {name}: FAIL（脚本不存在或不是 .py）")
             continue
         work = (root / str(item.get("cwd"))).resolve() if item.get("cwd") else root
+        if not _inside(work):
+            results.append(f"- {name}: FAIL（cwd 越界）")
+            continue
         command = [sys.executable, str(target), *[str(a) for a in item.get("args") or []]]
         try:
             proc = subproc.run(

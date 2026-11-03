@@ -170,6 +170,7 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         workflow,
         provider,
         run_dir,
+        model=os.environ.get("FORCHAT_MODEL", "fake"),
         external_tools=build_tools(),
         skill_loader=build_skill_loader(),
         guard=Policy(Path.cwd()).check,

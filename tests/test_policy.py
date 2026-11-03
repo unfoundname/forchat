@@ -231,6 +231,37 @@ def test_write_file_backs_up_overwrite() -> None:
 
 
 
+def test_policy_checks_run_checks_paths() -> None:
+    """run_checks 的嵌套 checks 也要过路径检查，且默认受限工具不能绕过。"""
+    from forchat.policy import Policy
+
+    root = tmpdir()
+    policy = Policy(root)
+    sibling = root.parent / f"{root.name}-evil"
+    denied = policy.check(
+        "run_checks",
+        json.dumps({"checks": [{"script": f"../{sibling.name}/x.py"}]}),
+    )
+    assert denied and "越界" in denied, denied
+
+    denied = policy.check("brand_new_tool", json.dumps({"path": "../outside.txt"}))
+    assert denied and "越界" in denied, denied
+
+
+def test_policy_run_checks_scope() -> None:
+    from forchat.policy import Policy
+
+    root = tmpdir()
+    (root / "allowed").mkdir()
+    policy = Policy(root)
+    denied = policy.check(
+        "run_checks",
+        json.dumps({"checks": [{"script": "outside.py"}]}),
+        scope=("allowed",),
+    )
+    assert denied and "授权范围" in denied, denied
+
+
 def main() -> int:
     checks = [
         ("policy 路径越界", test_policy_path_guard),
@@ -241,6 +272,8 @@ def main() -> int:
         ("scope 授权范围", test_policy_scope_enforced),
         ("run_python 擦除密钥", test_run_python_scrubs_secrets),
         ("write_file 覆盖前备份", test_write_file_backs_up_overwrite),
+        ("run_checks 路径检查", test_policy_checks_run_checks_paths),
+        ("run_checks scope", test_policy_run_checks_scope),
     ]
     return run("策略与安全自检", checks)
 

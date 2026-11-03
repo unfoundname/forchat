@@ -427,6 +427,35 @@ def test_run_checks_pass_fail_summary() -> None:
     assert "good: PASS" in out and "bad: FAIL" in out, out
 
 
+def test_run_checks_rejects_prefix_sibling() -> None:
+    """`..\\ForChat-evil\\x.py` 不能被 startswith(root) 放行。"""
+    import os
+    import shutil
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    sibling = work.parent / f"{work.name}-evil"
+    sibling.mkdir()
+    marker = work / "executed.txt"
+    (sibling / "x.py").write_text(
+        f"open(r'{marker}', 'w', encoding='utf-8').write('x')\n", encoding="utf-8"
+    )
+    old = os.getcwd()
+    os.chdir(work)
+    try:
+        out = registry.execute(
+            "run_checks",
+            json.dumps({"checks": [{"name": "evil", "script": f"../{sibling.name}/x.py"}]}),
+        )
+    finally:
+        os.chdir(old)
+        shutil.rmtree(sibling, ignore_errors=True)
+
+    assert "脚本越界" in out, out
+    assert not marker.exists(), "越界脚本不能被执行"
+
+
 def main() -> int:
     checks = [
         ("外部工具 schema 桥接", test_external_tools_bridge),
@@ -447,6 +476,7 @@ def main() -> int:
         ("web_fetch 拒绝内网", test_web_fetch_blocks_private_by_default),
         ("web_fetch 抓页面", test_web_fetch_reads_local_page_when_allowed),
         ("run_checks 汇总", test_run_checks_pass_fail_summary),
+        ("run_checks 拒绝前缀绕过", test_run_checks_rejects_prefix_sibling),
     ]
     return run("工具自检", checks)
 

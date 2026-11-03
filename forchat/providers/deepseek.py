@@ -22,8 +22,10 @@ class DeepSeekProvider:
         request_timeout: float | None = None,
         max_tokens: int | None = None,
     ) -> None:
-        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
-        self.base_url = base_url
+        self.api_key = (api_key or os.environ.get("DEEPSEEK_API_KEY")
+                        or os.environ.get("FORCHAT_API_KEY"))
+        # OpenAI 兼容端点：换 FORCHAT_BASE_URL + FORCHAT_MODEL 即可接别的 provider
+        self.base_url = os.environ.get("FORCHAT_BASE_URL", base_url)
         self.thinking = thinking
         # 单次请求超时：默认 180s。600s 那种长挂会让整个运行卡死且看不出原因。
         self.request_timeout = request_timeout or float(os.environ.get("FORCHAT_REQUEST_TIMEOUT", 240))

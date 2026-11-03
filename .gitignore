@@ -13,6 +13,7 @@ node_modules/
 .forchat-locks/
 .forchat-sandbox-tmp/
 .screenshots/
+.coverage
 pricing.json
 *.egg-info/
 build/

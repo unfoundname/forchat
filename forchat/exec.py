@@ -64,6 +64,12 @@ def spawn(
     preexec_fn=None,
 ) -> subprocess.Popen:
     envv = clean_environ() if scrub else (dict(env) if env is not None else None)
+    if envv is None:
+        envv = dict(os.environ)
+    # 唯一出口的红利：所有子进程统一 UTF-8 模式，避免 Windows 控制台/代码页把中文变成
+    # GBK 解码错误（pytest 不设 PYTHONUTF8 时，worker/远程 agent 会直接失败）。
+    envv["PYTHONUTF8"] = "1"
+    envv.setdefault("PYTHONIOENCODING", "utf-8")
     if sandbox and _acl_enabled(envv):
         cmd, envv = _wrap_sandbox(cmd, Path(cwd or os.getcwd()), envv)
     proc = subprocess.Popen(
