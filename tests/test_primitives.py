@@ -230,11 +230,35 @@ def test_tool_events_split_from_main_log() -> None:
     assert tools[0]["worker_id"] == "w1"
 
 
+def test_tools_log_rotates() -> None:
+    """tools.jsonl 超过阈值也要滚动，不能无限涨。"""
+    import os
+
+    from forchat.primitives.store import EventLog
+
+    old = os.environ.get("FORCHAT_EVENT_LOG_MB")
+    os.environ["FORCHAT_EVENT_LOG_MB"] = "0.004"
+    try:
+        run_dir = tmpdir()
+        log = EventLog(run_dir)
+        for _ in range(40):
+            log.append("tool_result", worker_id="w", tool="t", result="x" * 300)
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_EVENT_LOG_MB", None)
+        else:
+            os.environ["FORCHAT_EVENT_LOG_MB"] = old
+
+    assert list(run_dir.glob("tools.*.jsonl")), list(run_dir.iterdir())
+    assert (run_dir / "tools.jsonl").is_file()
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
         ("事件流跨进程追加", test_eventlog_cross_process_append),
         ("工具事件分离存储", test_tool_events_split_from_main_log),
+        ("工具日志滚动", test_tools_log_rotates),
         ("eventlog 追加/查询/附件", test_eventlog),
         ("workflow 拒绝未知工具", test_workflow_rejects_unknown_tool),
         ("workflow 拒绝不存在的派生目标", test_workflow_rejects_bad_spawn_target),

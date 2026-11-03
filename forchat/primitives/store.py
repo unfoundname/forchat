@@ -80,9 +80,22 @@ class EventLog:
             with self._lock_file() as lock:
                 self._maybe_rotate()
                 if type in TOOL_EVENTS:
+                    self._maybe_rotate_tools()
                     self._write_line(self.root / "tools.jsonl", event, durable=True)
                 self._write_line(self.path, compact, durable=type in DURABLE_TYPES)
         return event
+
+    def _maybe_rotate_tools(self) -> None:
+        path = self.root / "tools.jsonl"
+        if not path.is_file() or path.stat().st_size < self.max_bytes:
+            return
+        existing = list(self.root.glob("tools.*.jsonl"))
+        index = len(existing) + 1
+        target = self.root / f"tools.{index}.jsonl"
+        while target.exists():
+            index += 1
+            target = self.root / f"tools.{index}.jsonl"
+        path.replace(target)
 
     def _write_line(self, path: Path, event: dict[str, Any], durable: bool = False) -> None:
         line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
