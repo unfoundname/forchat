@@ -1,0 +1,38 @@
+{
+  "name": "minimal",
+  "version": 1,
+  "entry": "root",
+  "limits": {
+    "max_concurrent": 2,
+    "max_depth": 3,
+    "max_workers": 8,
+    "max_wall_seconds": 900
+  },
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": ["coder"],
+      "max_rounds": 3,
+      "tools": ["spawn", "report", "read_state", "write_note"],
+      "budget": {"tokens": 20000, "wall_seconds": 600, "cost_usd": 1.0},
+      "hooks": {"on_done": [{"action": "snapshot"}]}
+    },
+    "coder": {
+      "role_file": "prompts/coder.md",
+      "can_spawn": [],
+      "max_rounds": 2,
+      "tools": ["report", "read_state", "write_note"],
+      "hooks": {
+        "on_done": [
+          {"spawn": "reviewer", "task": "审查子任务 {worker_id} 的交付物", "wait": false}
+        ]
+      }
+    },
+    "reviewer": {
+      "role_file": "prompts/reviewer.md",
+      "can_spawn": [],
+      "max_rounds": 2,
+      "tools": ["report", "read_state"]
+    }
+  }
+}

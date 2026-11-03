@@ -1,0 +1,127 @@
+# ForChat
+
+一个 workflow 原语引擎：**原语（primitives）→ 可加载的 workflow 配置 → 一次运行**。
+不含任何业务；"复刻某某"是运行输入，不是代码。
+
+## 目录
+
+```
+ForChat/
+├── AGENTS.md                   给 agent 的工作规则（三条硬规则）
+├── CONTEXT.md                  领域词汇表：三层、worker、fence、report…
+├── docs/
+│   ├── architecture.md         分层与迁移计划
+│   └── decisions/              ADR
+├── forchat/
+│   ├── __main__.py             CLI：只装配，不执行
+│   ├── primitives/             ★ 原语层（唯一执行循环在这里）
+│   │   ├── types.py            WorkerInstance / Budget / Report
+│   │   ├── store.py            EventLog：append-only 事件流
+│   │   ├── scheduler.py        并发准入（等待型子 worker 内联，避免死锁）
+│   │   ├── hooks.py            action / spawn 两类 hook
+│   │   ├── workflow.py         workflow.json 严格加载与校验
+│   │   ├── runtime.py          ★ Runtime：spawn / report / read_state / write_note
+│   │   └── replay.py           review（人读）/ tree / tool_calls
+│   ├── providers/              base(Protocol) · fake(离线) · deepseek(唯一用 SDK)
+│   ├── tools/                  能力工具：read / list_dir / run_python / skill
+│   ├── skills/                 技能加载（SKILL.md）
+│   ├── mcp.py                  MCP 客户端（stdio + JSON-RPC）
+│   └── mcp_bridge.py           MCP 工具 → 工具注册表
+├── examples/
+│   ├── workflows/minimal/      最小 workflow 包（workflow.json + prompts/）
+│   ├── run_demo.py             端到端自检（假 provider，无需 key）
+│   ├── mcp_demo_server.py      80 行的 MCP 服务端
+│   └── smoke_mcp.py            MCP 链路自检
+├── tests/
+│   ├── test_primitives.py      原语自检（9 条）
+│   └── test_layering.py        依赖方向 / 领域词 / 唯一执行循环
+├── skills/                     技能目录（数据）
+└── mcp_servers.json            MCP 服务端配置
+```
+
+## 跑起来（不需要 key）
+
+```powershell
+python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
+python tests/test_primitives.py    # 原语自检
+python tests/test_layering.py      # 架构约束
+```
+
+## 跑真模型
+
+```powershell
+$env:DEEPSEEK_API_KEY = "sk-xxx"
+python -m forchat "把最小系统跑通"
+python -m forchat --workflow examples/workflows/minimal/workflow.json "目标"
+python -m forchat --tools          # 能力工具（含 MCP）
+python -m forchat --skills         # 技能
+python -m forchat --mcp            # 连 MCP 服务端
+```
+
+## 三层
+
+| 层 | 是什么 | 放哪 |
+|---|---|---|
+| 原语 | 执行模型 / 能力面 / 记录面 / 装配面 | `forchat/primitives/` |
+| workflow | 可加载配置：worker 模板、can_spawn、预算、hook、限制 | `examples/workflows/<name>/workflow.json` |
+| 运行输入 | 用户目标与澄清结果（spec/plan） | 运行时状态，不进仓库 |
+
+## 写一个 workflow 包
+
+```
+examples/workflows/minimal/
+├── workflow.json
+└── prompts/{root,coder,reviewer}.md
+```
+
+`workflow.json` 只描述结构，字段拼错会在加载期报错：
+
+```json
+{
+  "name": "minimal", "version": 1, "entry": "root",
+  "limits": {"max_concurrent": 2, "max_depth": 3, "max_workers": 8},
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": ["coder"],
+      "tools": ["spawn", "report", "read_state", "write_note"],
+      "budget": {"tokens": 20000, "wall_seconds": 600, "cost_usd": 1.0},
+      "hooks": {"on_done": [{"action": "snapshot"}]}
+    }
+  }
+}
+```
+
+运行时只给模型四个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数量约束）、`report`（完成信号）、`read_state` / `write_note`（plan 与笔记，防止上下文遗忘）。
+
+## 能力工具（read / list_dir / run_python / skill）
+
+在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
+
+```python
+from ..registry import tool
+
+@tool(description="把文本转成大写", params={"text": "要转换的文本"})
+def upper(text: str) -> str:
+    return text.upper()
+```
+
+> 接入方式：`forchat/tool_bridge.py` 把 registry 里的工具导出成 `{name: (spec, caller)}` 注入 `Runtime`。
+> 在 `workflow.json` 的 `tools` 里写工具名即可（校验时会拿"这台机器上当前注册了哪些工具"来比对）：
+
+## 技能
+
+`skills/<名字>/SKILL.md`，frontmatter 只有 `name` / `description`，正文按需注入（渐进式披露）。技能可以带脚本，用 `run_python` 跑，见 `skills/code-graph/`。
+
+## MCP
+
+`mcp_servers.json` 声明服务端；工具名带 `mcp__<server>__<tool>` 前缀，远端工具走原始参数 JSON（`raw_caller`），因为远端 schema 可能嵌套。只支持 stdio + tools 能力。
+
+## 学习路径
+
+1. `CONTEXT.md` —— 先对齐词汇，三层不许混
+2. `forchat/primitives/types.py` —— WorkerInstance / Budget / Report
+3. `forchat/primitives/runtime.py` —— 唯一执行循环：spawn / hook / report
+4. `forchat/primitives/workflow.py` —— 配置如何被严格校验
+5. `forchat/primitives/replay.py` —— 从事件流重建一次运行
+6. `examples/workflows/minimal/` —— 配置怎么拼出结构
