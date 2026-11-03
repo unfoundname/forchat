@@ -214,6 +214,28 @@ def upper(text: str) -> str:
   `.forchat-backups/<相对路径>`，写错至少能捞回来。
 
 真隔离属于部署层（容器 + 只读挂载 + 受限用户），不在本仓库范围内。
+
+## 成本核算
+
+引擎不内置任何价格——价目表由你提供，缺价目时成本显示"未知"，**不假装是 0**。
+
+`pricing.json`（或 `FORCHAT_PRICING` 指向的文件）：
+
+```json
+{
+  "models": {
+    "deepseek-chat": {"input_per_m": 0.27, "output_per_m": 1.10}
+  }
+}
+```
+
+单价含义：每百万 token 的美元，**数字请按你的实际合同/官网核对**（示例不是报价）。
+
+接入后：
+
+- 每个 `report.cost_usd` 按 prompt/completion token 分别计价；
+- `run_finished` 记 `total_cost_usd`，`--inspect` 摘要多一行 `成本: $0.0123（按价目表估算）`；
+- 预算可写 `budget.max_cost_usd`（单 worker）与 `limits.max_total_cost_usd`（整轮），超了和 token 一样熔断。
 被拒时返回错误回执给模型，不中断整个运行。
 
 ## 失败隔离
@@ -228,7 +250,6 @@ def upper(text: str) -> str:
 - 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。
 
 provider 的两个硬参数（真模型）：
-
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `FORCHAT_REQUEST_TIMEOUT` | 180s | 单次请求超时；挂住会以 `worker_error` 失败，不会拖死整次运行 |

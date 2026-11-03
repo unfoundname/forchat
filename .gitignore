@@ -10,3 +10,4 @@ venv/
 node_modules/
 .worktrees/
 .forchat-backups/
+pricing.json

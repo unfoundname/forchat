@@ -19,7 +19,7 @@ BUILTIN_TOOLS = {
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {
     "max_concurrent", "max_depth", "max_workers", "max_wall_seconds",
-    "max_total_tokens", "max_total_seconds",
+    "max_total_tokens", "max_total_seconds", "max_total_cost_usd",
 }
 _WORKER_KEYS = {
     "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks", "scope",

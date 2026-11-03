@@ -406,6 +406,72 @@ def test_retry_provider_exhausts_attempts() -> None:
     assert calls["n"] == 3
 
 
+def test_pricing_math_and_unknown() -> None:
+    from forchat.pricing import Price, Pricing
+
+    pricing = Pricing({"m": Price(input_per_m=1.0, output_per_m=2.0)})
+    assert pricing.cost("m", 1_000_000, 0) == 1.0
+    assert pricing.cost("m", 0, 1_000_000) == 2.0
+    assert pricing.cost("m", 1_000_000, 1_000_000) == 3.0
+    assert pricing.cost("unknown-model", 10, 10) is None
+
+
+def test_runtime_report_includes_cost() -> None:
+    from forchat.pricing import Price, Pricing
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder({"root": [tool_chunks([("report", {"summary": "ok"})])]})
+    runtime = Runtime(
+        workflow,
+        FakeProvider(responder),
+        tmpdir(),
+        pricing=Pricing({"fake": Price(input_per_m=1.0, output_per_m=2.0)}),
+    )
+    root = runtime.start("任务")
+
+    assert root.report.cost_usd is not None
+    assert root.report.cost_usd > 0
+    finished = runtime.log.query(type="run_finished")[-1]
+    assert finished["total_cost_usd"] > 0
+
+
+def test_budget_cost_fence() -> None:
+    from forchat.pricing import Price, Pricing
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["budget"] = {
+        "tokens": 20000, "wall_seconds": 600, "max_cost_usd": 0.00001,
+    }
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("read_state", {})]),
+                tool_chunks([("report", {"summary": "不该到这"})]),
+            ]
+        }
+    )
+    runtime = Runtime(
+        workflow,
+        FakeProvider(responder),
+        tmpdir(),
+        pricing=Pricing({"fake": Price(input_per_m=1.0, output_per_m=100.0)}),
+    )
+    root = runtime.start("任务")
+
+    assert runtime.log.query(type="budget_exhausted"), "成本超限应当判废"
+    assert root.status == "failed"
+
+
 def main() -> int:
     checks = [
         ("能力工具桥接：外部工具注入", test_external_tools_bridge),
@@ -424,6 +490,9 @@ def main() -> int:
         ("RetryProvider：首片前重试", test_retry_provider_retries_before_first_chunk),
         ("RetryProvider：流中不重试", test_retry_provider_does_not_retry_midstream),
         ("RetryProvider：重试耗尽", test_retry_provider_exhausts_attempts),
+        ("价目表换算", test_pricing_math_and_unknown),
+        ("运行时报告含成本", test_runtime_report_includes_cost),
+        ("成本预算闸", test_budget_cost_fence),
     ]
     return run("工具与安全自检", checks)
 

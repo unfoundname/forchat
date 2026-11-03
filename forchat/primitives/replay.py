@@ -99,6 +99,8 @@ class Replay:
                 lines.append(
                     f"运行: status={event.get('status')} tokens={used} 用时={event.get('elapsed')}s"
                 )
+            if "total_cost_usd" in event:
+                lines.append(f"成本: ${event.get('total_cost_usd'):.4f}（按价目表估算）")
         return "\n".join(lines)
 
     def tree(self) -> str:

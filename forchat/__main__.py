@@ -127,6 +127,7 @@ def _list_skills() -> None:
 
 def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     from .policy import Policy
+    from .pricing import Pricing
     from .providers.deepseek import DeepSeekProvider
     from .providers.retry import RetryProvider
     from .tool_bridge import build as build_tools, build_skill_loader
@@ -136,6 +137,12 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
     if attempts > 1:
         provider = RetryProvider(provider, attempts=attempts)
 
+    pricing = Pricing.load()
+    if pricing.known():
+        print(f"[pricing] 已加载价目表：{', '.join(pricing.known())}")
+    else:
+        print("[pricing] 未配置价目表（pricing.json / FORCHAT_PRICING），成本显示为未知")
+
     return Runtime(
         workflow,
         provider,
@@ -143,6 +150,7 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         external_tools=build_tools(),
         skill_loader=build_skill_loader(),
         guard=Policy(Path.cwd()).check,
+        pricing=pricing if pricing.known() else None,
     )
 
 

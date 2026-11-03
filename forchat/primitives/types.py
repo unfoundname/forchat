@@ -13,37 +13,59 @@ Status = Literal["pending", "running", "done", "failed", "killed", "interrupted"
 
 @dataclass
 class Budget:
-    """token / 墙钟 二元预算。用完即判废，由运行时强制执行。
+    """token / 墙钟 / 成本 三元预算。用完即判废，由运行时强制执行。
 
-    没有 cost 字段：provider 不返回金额，记一个永远是 0 的成本只会误导。
-    等真的接入计费（有价目表）再加。
+    cost 只有配了价目表（pricing.json / FORCHAT_PRICING）才有意义；
+    没配时 cost 字段为 None，报告里明确显示"未知"，不假装是 0。
     """
 
     tokens: int = 200_000
     wall_seconds: float = 1800.0
+    max_cost_usd: float | None = None
     spent_tokens: int = 0
     spent_seconds: float = 0.0
+    spent_prompt_tokens: int = 0
+    spent_completion_tokens: int = 0
+    spent_cost_usd: float = 0.0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Budget":
         data = data or {}
-        known = {"tokens", "wall_seconds"}
+        known = {"tokens", "wall_seconds", "max_cost_usd"}
         unknown = set(data) - known
         if unknown:
             raise ValueError(f"budget 里有未知字段：{sorted(unknown)}")
         return cls(**{k: data[k] for k in known if k in data})
 
-    def charge(self, tokens: int = 0, seconds: float = 0.0) -> None:
+    def charge(
+        self,
+        tokens: int = 0,
+        seconds: float = 0.0,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        cost_usd: float = 0.0,
+    ) -> None:
         self.spent_tokens += max(tokens, 0)
         self.spent_seconds += max(seconds, 0.0)
+        self.spent_prompt_tokens += max(prompt_tokens, 0)
+        self.spent_completion_tokens += max(completion_tokens, 0)
+        self.spent_cost_usd += max(cost_usd, 0.0)
 
     def exhausted(self) -> bool:
-        return self.spent_tokens >= self.tokens or self.spent_seconds >= self.wall_seconds
+        if self.spent_tokens >= self.tokens or self.spent_seconds >= self.wall_seconds:
+            return True
+        return self.max_cost_usd is not None and self.spent_cost_usd >= self.max_cost_usd
 
     def snapshot(self) -> dict[str, Any]:
         return {
             "tokens": [self.spent_tokens, self.tokens],
             "seconds": [round(self.spent_seconds, 3), self.wall_seconds],
+            "cost_usd": [
+                round(self.spent_cost_usd, 4),
+                self.max_cost_usd,
+            ],
+            "prompt_tokens": self.spent_prompt_tokens,
+            "completion_tokens": self.spent_completion_tokens,
         }
 
 
@@ -59,6 +81,7 @@ class Report:
     unresolved: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
     budget: dict[str, Any] = field(default_factory=dict)
+    cost_usd: float | None = None
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,6 +94,7 @@ class Report:
             "unresolved": self.unresolved,
             "evidence": self.evidence,
             "budget": self.budget,
+            "cost_usd": self.cost_usd,
             "created_at": self.created_at,
         }
 

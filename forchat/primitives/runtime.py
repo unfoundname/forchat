@@ -169,6 +169,7 @@ class Runtime:
         external_tools: dict[str, tuple[dict, Any]] | None = None,
         skill_loader: Callable[[str], str | None] | None = None,
         guard: Callable[[str, str], str | None] | None = None,
+        pricing: Any | None = None,
     ) -> None:
         self.wf = workflow
         self.provider = provider
@@ -180,6 +181,8 @@ class Runtime:
         self.skill_loader = skill_loader
         # 执行前护栏：(tool, raw_arguments) -> None 放行 / str 拒绝原因
         self.guard = guard
+        # 价目表：只要求有 .cost(model, prompt_tokens, completion_tokens) 方法
+        self.pricing = pricing
         self.dir = Path(run_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.log = EventLog(self.dir)
@@ -192,7 +195,9 @@ class Runtime:
             float(workflow.limits.get("max_total_seconds", 3600)),
         )
         self.max_total_tokens = int(workflow.limits.get("max_total_tokens", 1_000_000))
+        self.max_total_cost_usd = workflow.limits.get("max_total_cost_usd")
         self.total_tokens = 0
+        self.total_cost_usd = 0.0
         self._budget_tripped = False
         self.run_deadline: float | None = None
         self.scheduler = Scheduler(
@@ -292,13 +297,18 @@ class Runtime:
     def _deadline_exceeded(self) -> bool:
         return self.run_deadline is not None and time.time() > self.run_deadline
 
-    def _charge_total(self, tokens: int) -> None:
-        if tokens <= 0:
-            return
+    def _charge_total(self, tokens: int, cost_usd: float | None = None) -> None:
         with self._lock:
-            self.total_tokens += tokens
-            if self.total_tokens >= self.max_total_tokens:
-                self._budget_tripped = True
+            if tokens > 0:
+                self.total_tokens += tokens
+                if self.total_tokens >= self.max_total_tokens:
+                    self._budget_tripped = True
+            if cost_usd:
+                self.total_cost_usd += cost_usd
+                if self.max_total_cost_usd is not None and self.total_cost_usd >= float(
+                    self.max_total_cost_usd
+                ):
+                    self._budget_tripped = True
 
     # ------------------------------------------------------------------ 入口
     def start(self, task: str, template: str | None = None) -> WorkerInstance | None:
@@ -323,6 +333,8 @@ class Runtime:
                 workers=len(self.workers),
                 total_tokens=self.total_tokens,
                 budget_limit=self.max_total_tokens,
+                **({"total_cost_usd": round(self.total_cost_usd, 6)}
+                   if self.pricing is not None else {}),
                 scheduler=self.scheduler.stats(),
                 elapsed=round(time.time() - self.started_at, 3),
             )
@@ -378,7 +390,7 @@ class Runtime:
                 parent_id=parent.id if parent else None,
                 depth=depth,
                 budget=Budget(**{k: getattr(tpl.budget, k) for k in
-                                 ("tokens", "wall_seconds")}),
+                                 ("tokens", "wall_seconds", "max_cost_usd")}),
                 scope=chosen_scope,
             )
             self.workers[worker_id] = worker
@@ -441,8 +453,17 @@ class Runtime:
                                 error=f"{type(exc).__name__}: {exc}")
                 last_text = last_text or f"（异常：{type(exc).__name__}: {exc}）"
                 break
-            worker.budget.charge(tokens=usage)
-            self._charge_total(usage)
+            tokens = usage["prompt"] + usage["completion"]
+            cost = None
+            if self.pricing is not None:
+                cost = self.pricing.cost(self.model, usage["prompt"], usage["completion"])
+            worker.budget.charge(
+                tokens=tokens,
+                prompt_tokens=usage["prompt"],
+                completion_tokens=usage["completion"],
+                cost_usd=cost or 0.0,
+            )
+            self._charge_total(tokens, cost)
             last_text = text
 
             stop_event = self._stop_events.get(worker.id)
@@ -495,6 +516,12 @@ class Runtime:
         # 只有真的调用过 report 才算完成；跑满轮次/超预算/只说话不交报告都不算
         worker.report.status = "done" if status == "done" else "failed"
         worker.report.budget = worker.budget.snapshot()
+        if self.pricing is not None:
+            worker.report.cost_usd = self.pricing.cost(
+                self.model,
+                worker.budget.spent_prompt_tokens,
+                worker.budget.spent_completion_tokens,
+            )
         worker.status = status
         self.log.append(
             "worker_done",
@@ -509,11 +536,12 @@ class Runtime:
     # ------------------------------------------------------------------ 一轮对话
     def _stream_round(
         self, worker: WorkerInstance, tpl: WorkerTemplate, messages: list[dict], rnd: int
-    ) -> tuple[str, list[dict], int]:
+    ) -> tuple[str, list[dict], dict[str, int]]:
         self.log.append("round_start", worker_id=worker.id, round=rnd)
         content: list[str] = []
         pending: dict[int, dict] = {}
-        usage = 0
+        prompt_tokens = 0
+        completion_tokens = 0
 
         stop_event = self._stop_events.setdefault(worker.id, threading.Event())
 
@@ -522,7 +550,9 @@ class Runtime:
                 # 协作式取消：只能做到"下一个分片到达时停"，在途网络请求没法硬杀
                 self.log.append("worker_stop_requested", worker_id=worker.id, round=rnd)
                 break
-            usage += int(chunk.get("usage", {}).get("completion_tokens", 0))
+            usage = chunk.get("usage") or {}
+            prompt_tokens += int(usage.get("prompt_tokens", 0))
+            completion_tokens += int(usage.get("completion_tokens", 0))
             choices = chunk.get("choices") or []
             if not choices:
                 continue
@@ -557,9 +587,9 @@ class Runtime:
         if text:
             self.log.append("assistant_message", worker_id=worker.id, round=rnd, text=text)
         calls = [pending[i] for i in sorted(pending)]
-        if usage == 0:
-            usage = max(1, (len(text) + sum(len(c["arguments"]) for c in calls)) // 4)
-        return text, calls, usage
+        if completion_tokens == 0:
+            completion_tokens = max(1, (len(text) + sum(len(c["arguments"]) for c in calls)) // 4)
+        return text, calls, {"prompt": prompt_tokens, "completion": completion_tokens}
 
     # ------------------------------------------------------------------ 工具
     def _execute_tool(
