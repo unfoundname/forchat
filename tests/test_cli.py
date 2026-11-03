@@ -106,6 +106,26 @@ def test_runs_missing_dir() -> None:
     assert "没有" in buffer.getvalue()
 
 
+def test_prune_dry_run_then_delete() -> None:
+    """--prune 默认只给计划，--yes 才真删。"""
+    from forchat.runs import prune
+
+    base = tmpdir()
+    for name in ("a", "b", "c"):
+        run_dir = base / name
+        run_dir.mkdir()
+        (run_dir / "events.jsonl").write_text("x" * 100, encoding="utf-8")
+
+    victims, freed = prune(base, keep_last=1, dry_run=True)
+    assert len(victims) == 2, victims
+    assert freed > 0
+    assert all(path.is_dir() for path in victims)
+
+    removed, _ = prune(base, keep_last=1, dry_run=False)
+    assert all(not path.exists() for path in removed)
+    assert len(list(base.iterdir())) == 1
+
+
 def main() -> int:
     checks = [
         ("--check 进程级退出码", test_check_cli_exit_codes),
@@ -113,6 +133,7 @@ def main() -> int:
         ("--inspect 缺失目录返回 2", test_inspect_missing_dir_returns_2),
         ("--runs 列出历史", test_runs_lists_history),
         ("--runs 缺失目录", test_runs_missing_dir),
+        ("--prune 计划与删除", test_prune_dry_run_then_delete),
     ]
     return run("CLI 自检", checks)
 

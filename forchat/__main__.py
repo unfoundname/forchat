@@ -31,9 +31,11 @@ USAGE = """用法:
   python -m forchat --mcp       连接 mcp_servers.json 里的服务端
   python -m forchat --inspect <run-dir>   复查一次历史运行
   python -m forchat --runs      列出历史运行（状态/worker 数/token/耗时）
+  python -m forchat --prune [--keep N] [--days D] [--yes]   清理旧运行（默认 dry-run）
   python -m forchat --serve [port]       启动 HTTP/SSE 服务（默认 8000，仅绑定本机）
   python -m forchat --check <workflow>   只校验 workflow 配置，不跑模型
   python -m forchat --resume <run-dir> [目标]   在同一个运行目录上继续推进
+  python -m forchat --resume-worker <run-dir> <worker-id>   从执行快照继续某个 worker
 """
 
 
@@ -229,6 +231,38 @@ def _resume(run_dir: Path, goal: str) -> int:
     return _execute(workflow, run_dir, goal, label="resume")
 
 
+def _resume_worker(run_dir: Path, worker_id: str) -> int:
+    """从每轮快照继续一个中断/失败的 worker（同一 run 目录，事件追加）。"""
+    from .skills import load_skills
+    from .tool_bridge import known_names
+
+    snapshot = run_dir / "workflow.json"
+    if not snapshot.is_file():
+        print(f"运行目录里没有 workflow.json 快照：{run_dir}")
+        return 2
+
+    connect_from_config()
+    try:
+        workflow = WorkflowDef.load(
+            snapshot, known_tools=known_names(), known_skills=set(load_skills())
+        )
+    except WorkflowError as exc:
+        print(f"[resume-worker] workflow 快照有误：{exc}")
+        return 2
+    finally:
+        close_all()
+
+    runtime = _assemble(workflow, run_dir)
+    try:
+        worker = runtime.resume_worker(worker_id)
+    except KeyError as exc:
+        print(f"[resume-worker] {exc}")
+        return 2
+    summary = (worker.report.summary if worker.report else "")[:200]
+    print(f"[resume-worker] {worker_id} status={worker.status} {summary}")
+    return 0 if worker.status == "done" else 1
+
+
 def main() -> None:
     args = sys.argv[1:]
 
@@ -253,6 +287,24 @@ def main() -> None:
 
         serve(port=port)
         return
+    if args and args[0] == "--prune":
+        from .runs import prune
+
+        keep = 20
+        days = None
+        if "--keep" in args:
+            keep = int(args[args.index("--keep") + 1])
+        if "--days" in args:
+            days = float(args[args.index("--days") + 1])
+        yes = "--yes" in args
+        victims, freed = prune(Path(".runs"), keep_last=keep, older_than_days=days, dry_run=not yes)
+        action = "删除" if yes else "计划删除（加 --yes 才真删）"
+        print(f"[prune] {action} {len(victims)} 个运行，{freed / 1024 / 1024:.1f} MB")
+        for item in victims[:20]:
+            print(f"  - {item.name}")
+        if len(victims) > 20:
+            print(f"  ...（共 {len(victims)} 个）")
+        return
     if args and args[0] == "--runs":
         raise SystemExit(_list_runs())
     if args and args[0] == "--inspect":
@@ -265,6 +317,11 @@ def main() -> None:
             print("--check 需要一个 workflow 路径")
             return
         raise SystemExit(_check(Path(args[1])))
+    if args and args[0] == "--resume-worker":
+        if len(args) < 3:
+            print("--resume-worker 需要 <运行目录> <worker-id>")
+            return
+        raise SystemExit(_resume_worker(Path(args[1]), args[2]))
     if args and args[0] == "--resume":
         if len(args) < 2:
             print("--resume 需要一个运行目录")

@@ -107,6 +107,31 @@ class RunManager:
             return None
         return self._summary(run_dir)
 
+    def metrics_text(self) -> str:
+        """Prometheus 文本格式（简单够用，不做直方图）。"""
+        runs = self.list_runs(1000)
+        running = sum(1 for item in runs if item["status"] == "running")
+        workers = sum(int(item["workers"] or 0) for item in runs)
+        tokens = sum(int(item["tokens"] or 0) for item in runs)
+        cost = sum(float(item["cost_usd"] or 0) for item in runs)
+        return (
+            "# HELP forchat_runs_total Total runs known to this server.\n"
+            "# TYPE forchat_runs_total gauge\n"
+            f"forchat_runs_total {len(runs)}\n"
+            "# HELP forchat_runs_running Runs that have not finished yet.\n"
+            "# TYPE forchat_runs_running gauge\n"
+            f"forchat_runs_running {running}\n"
+            "# HELP forchat_workers_total Workers across known runs.\n"
+            "# TYPE forchat_workers_total gauge\n"
+            f"forchat_workers_total {workers}\n"
+            "# HELP forchat_tokens_total Tokens across known runs.\n"
+            "# TYPE forchat_tokens_total gauge\n"
+            f"forchat_tokens_total {tokens}\n"
+            "# HELP forchat_cost_usd_total Estimated cost across known runs.\n"
+            "# TYPE forchat_cost_usd_total gauge\n"
+            f"forchat_cost_usd_total {cost:.6f}\n"
+        )
+
     def _iter_runs(self, limit: int):
         if not self.runs_root.is_dir():
             return []
@@ -170,6 +195,14 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
             path = urlparse(self.path).path.rstrip("/") or "/"
             if path == "/health":
                 self._json(200, {"ok": True})
+                return
+            if path == "/metrics":
+                body = manager.metrics_text().encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
             if path == "/runs":
                 self._json(200, {"runs": manager.list_runs()})

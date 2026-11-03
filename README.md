@@ -85,6 +85,7 @@ python -m forchat --mcp            # 连 MCP 服务端
 python -m forchat --inspect .runs/<run>   # 复查一次历史运行（树 + 每个 worker 的消耗与摘要）
 python -m forchat --check examples/workflows/minimal/workflow.json   # 只校验配置，不跑模型
 python -m forchat --runs           # 列出历史运行（状态 / worker 数 / token / 耗时）
+python -m forchat --prune --keep 20          # 看清理计划（默认 dry-run，--yes 才真删）
 python -m forchat --resume .runs/<run> "继续推进"                    # 在同一个运行目录上续跑
 ```
 
@@ -415,6 +416,7 @@ python -m forchat --serve 8000
 | `POST /runs` | `{"workflow": "minimal", "goal": "..."}` → `202 {"id", "run_dir"}` |
 | `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告 |
 | `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
+| `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本 |
 | `POST /runs/<id>/stop` | 请求停止该运行里所有在跑的 worker（协作式） |
 
 鉴权与限流：
@@ -437,8 +439,16 @@ python -m forchat --serve 8000
 根 worker 的系统提示里会带上历史摘要（全文用 `read_worker_report` 查）。
 
 **崩溃恢复**：上次进程被杀时没有 `worker_done` 的 worker 会被标成 `interrupted`，
-`--resume` 会把它们的**任务原文**列进根提示与命令行，由模型决定重新派发还是接手——
-引擎不会自动复活在途 worker（那需要持久化的执行快照，目前没有）。
+`--resume` 会把它们的**任务原文**列进根提示与命令行，由模型决定重新派发还是接手。
+
+**断点续跑**：每个 worker **每轮**都会把 `messages` 落一份快照（`workers/<id>.json`），
+所以崩溃后可以针对性继续：
+
+```powershell
+python -m forchat --resume-worker .runs/<run> n002-coder
+```
+
+它用快照里的消息历史继续对话（不是开新会话），事件追加在同一条流里。
 
 ## 学习路径
 

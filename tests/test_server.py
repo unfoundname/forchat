@@ -74,6 +74,11 @@ def test_http_endpoints_and_sse() -> None:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as resp:
             assert json.loads(resp.read())["ok"] is True
 
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=5) as resp:
+            metrics = resp.read().decode("utf-8")
+        assert "forchat_runs_total" in metrics
+        assert "forchat_tokens_total" in metrics
+
         request = urllib.request.Request(
             f"http://127.0.0.1:{port}/runs",
             data=json.dumps({"workflow": "minimal", "goal": "http 自检"}).encode("utf-8"),

@@ -402,7 +402,7 @@ class Runtime:
                         parent=parent.id if parent else None, task=task, scope=chosen_scope)
         return worker
 
-    def _run_worker(self, worker: WorkerInstance) -> None:
+    def _run_worker(self, worker: WorkerInstance, resume: dict | None = None) -> None:
         tpl = self.wf.workers[worker.template]
         worker.status = "running"
         started = time.time()
@@ -415,6 +415,13 @@ class Runtime:
         last_text = ""
         reported = False
         rnd = 0
+        if resume:
+            # 断点续跑：从快照里的 messages 继续；轮次清零（max_rounds 是"单次会话"的闸）
+            messages = resume.get("messages") or messages
+            rnd = 0
+            reported = bool(resume.get("reported", False))
+            self.log.append("worker_snapshot_loaded", worker_id=worker.id,
+                            resume_round=resume.get("round", 0), messages=len(messages))
 
         # 默认不限轮数：协调型 worker 跑几十上百轮是正常的，真正的闸是预算与墙钟。
         # 想给单个模板设上限，就在 workflow.json 里写 max_rounds。
@@ -476,6 +483,7 @@ class Runtime:
                 break
 
             if not calls:
+                self._save_worker_state(worker, messages, rnd, reported)
                 reason = "stop"
                 break
 
@@ -499,6 +507,7 @@ class Runtime:
                     result = f"错误：{type(exc).__name__}: {exc}"
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
 
+            self._save_worker_state(worker, messages, rnd, reported)
             if worker.report is not None:
                 # report 是显式的完成信号：本轮结束，不再请求下一轮
                 reported = True
@@ -545,6 +554,57 @@ class Runtime:
         )
         self.log.append("report", worker_id=worker.id, report=worker.report.to_dict())
         self._run_hooks(worker, "on_done" if worker.status == "done" else "on_fail")
+
+    # ------------------------------------------------------------------ 观测
+    def metrics(self) -> dict[str, Any]:
+        """给服务端 /metrics 用的运行时快照（不是持久状态）。"""
+        counts: dict[str, int] = {}
+        for item in self.workers.values():
+            counts[item.status] = counts.get(item.status, 0) + 1
+        return {
+            "workers": counts,
+            "tokens": self.total_tokens,
+            "cost_usd": round(self.total_cost_usd, 6),
+            "elapsed": round(time.time() - self.started_at, 1),
+            "budget_tripped": self._budget_tripped,
+        }
+
+    # ------------------------------------------------------------------ 执行快照
+    def _worker_state_path(self, worker_id: str) -> Path:
+        return self.dir / "workers" / f"{worker_id}.json"
+
+    def _save_worker_state(
+        self, worker: WorkerInstance, messages: list[dict], round_no: int, reported: bool
+    ) -> None:
+        """每轮落一次快照：messages + 轮次 + 是否已 report。崩溃后可以接着跑。"""
+        path = self._worker_state_path(worker.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "worker_id": worker.id,
+            "template": worker.template,
+            "task": worker.task,
+            "round": round_no,
+            "reported": reported,
+            "messages": messages,
+        }
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+        tmp.replace(path)
+
+    def resume_worker(self, worker_id: str) -> WorkerInstance:
+        """从快照继续一个已经中断/失败的 worker（同一 run 目录、追加事件）。"""
+        path = self._worker_state_path(worker_id)
+        if not path.is_file():
+            raise KeyError(f"没有 {worker_id} 的执行快照：{path}")
+        worker = self.workers.get(worker_id)
+        if worker is None:
+            raise KeyError(f"这个 run 里没有 worker {worker_id}")
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if self.run_deadline is None:
+            self.run_deadline = time.time() + self.max_wall_seconds
+        self.log.append("worker_resumed", worker_id=worker_id, round=state.get("round", 0))
+        self._run_worker(worker, resume=state)
+        return worker
 
     # ------------------------------------------------------------------ 一轮对话
     def _stream_round(

@@ -902,6 +902,39 @@ def test_worker_retries_transient_error() -> None:
     assert root.report.summary == "重试后成功"
 
 
+def test_resume_worker_from_snapshot() -> None:
+    """每轮快照 + --resume-worker 语义：从断点消息继续，而不是开新会话。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["max_rounds"] = 1
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    run_dir = tmpdir()
+    first = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("read_state", {})])]})
+    )
+    runtime = Runtime(workflow, first, run_dir)
+    root = runtime.start("任务")
+
+    assert root.status == "failed", root.status
+    snapshot = run_dir / "workers" / "n001-root.json"
+    assert snapshot.is_file(), list((run_dir / "workers").iterdir())
+
+    second = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("report", {"summary": "断点续跑完成"})])]})
+    )
+    resumed = Runtime(workflow, second, run_dir)
+    worker = resumed.resume_worker("n001-root")
+
+    assert worker.status == "done"
+    assert worker.report.summary == "断点续跑完成"
+    roles = [m["role"] for m in second.seen[0]]
+    assert "assistant" in roles and "tool" in roles, roles
+    assert resumed.log.query(type="worker_snapshot_loaded")
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
@@ -944,6 +977,7 @@ def main() -> int:
         ("中断 worker 续跑可见", test_interrupted_worker_recovered_on_resume),
         ("事件流滚动与完整性", test_event_log_rotation_and_integrity),
         ("worker 级重试", test_worker_retries_transient_error),
+        ("快照续跑单个 worker", test_resume_worker_from_snapshot),
     ]
     return run("原语自检", checks)
 
