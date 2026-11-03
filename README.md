@@ -273,6 +273,13 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
 - 事件流按 `FORCHAT_EVENT_LOG_MB`（默认 32MB）分段，关键事件 fsync；
 - `--prune` 定期清理旧运行目录。
 
+
+**整 worker 进程化（叶子）**：`FORCHAT_PROCESS_WORKERS=1` 时，`can_spawn` 为空的叶子 worker
+整个循环（模型请求 + 工具 + 快照）在子进程里跑；父进程只做调度与事件单写者。
+`force_stop` / `stop_worker` 直接 `kill` 子进程——**纯 Python 死循环也能真杀**。
+协调型 worker（会 spawn 的）仍在父进程，因为它们的工作是分派与汇总，不是长跑。
+子进程通过 `python -m forchat.worker_proc` 启动，事件写回同一 run 目录（跨进程文件锁）。
+
 **资源感知**：每次 `spawn` 的回执、以及不带 `key` 的 `read_state`，都会带上
 `剩余总预算 N tokens / 共 M；已建 worker x/y`；宿主侧用 `Runtime.resources()` 拿到同样的结构
 （tokens/cost/wall/workers/queue/concurrency）。整轮预算只剩 <20% 时，上下文裁剪会自动收紧并标 `tight`。

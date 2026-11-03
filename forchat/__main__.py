@@ -159,6 +159,7 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
         stream_factory=_stream_factory(),
         worker_context=subproc.worker_context,
         cancel_processes=subproc.cancel_worker,
+        process_workers=os.environ.get("FORCHAT_PROCESS_WORKERS") == "1",
     )
 
 

@@ -121,7 +121,7 @@ class ToolsMixin:
             return f"错误：子 worker 被资源或深度限制拒绝{self._resource_line()}"
 
         if wait:
-            self._run_worker(child)          # 内联执行，不占并发槽
+            self._run_child_worker(child)    # 进程模式走子进程，否则内联执行
             summary = (child.report.summary if child.report else "")[:400]
             # 子 worker 的 hook 可能又派了 worker（如 review），它们的成败父 worker 必须看得见，
             # 否则"review 超时/失败"会被静默吞掉。
@@ -141,7 +141,10 @@ class ToolsMixin:
         self.log.append("worker_queued", worker_id=child.id,
                         pending=self.scheduler.stats()["pending"] + 1,
                         max_concurrent=self.scheduler.max_concurrent)
-        future = self.scheduler.submit(self._run_worker, child, resume)
+        if self.process_workers and not self.wf.workers[child.template].can_spawn:
+            future = self.scheduler.submit(self._run_process_worker, child)
+        else:
+            future = self.scheduler.submit(self._run_worker, child, resume)
         self._futures[child.id] = future
 
     def _tool_restart(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:

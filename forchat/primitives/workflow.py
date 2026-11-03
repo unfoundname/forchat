@@ -56,6 +56,35 @@ class WorkflowDef:
     workers: dict[str, WorkerTemplate]
     base_dir: Path
 
+    def to_dict(self) -> dict[str, Any]:
+        """还原成 workflow.json 的形状（子进程 worker 用）。"""
+        return {
+            "name": self.name,
+            "version": self.version,
+            "entry": self.entry,
+            "limits": dict(self.limits),
+            "workers": {
+                name: {
+                    "role": tpl.role,
+                    "can_spawn": list(tpl.can_spawn),
+                    "max_rounds": tpl.max_rounds,
+                    "tools": list(tpl.tools),
+                    "skills": list(tpl.skills),
+                    "budget": {
+                        "tokens": tpl.budget.tokens,
+                        "wall_seconds": tpl.budget.wall_seconds,
+                        **({"max_cost_usd": tpl.budget.max_cost_usd}
+                           if tpl.budget.max_cost_usd is not None else {}),
+                    },
+                    "hooks": tpl.hooks,
+                    "scope": list(tpl.scope),
+                    "retries": tpl.retries,
+                    "require_checks": tpl.require_checks,
+                }
+                for name, tpl in self.workers.items()
+            },
+        }
+
     # ------------------------------------------------------------------ 加载
     @classmethod
     def load(
