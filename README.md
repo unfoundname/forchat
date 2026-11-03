@@ -37,8 +37,11 @@ ForChat/
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
 ├── tests/
-│   ├── run_all.py              一条命令跑全部本地检查（原语 + 分层 + demo + MCP）
-│   ├── test_primitives.py      原语自检（45 条：预算/围栏/事件流/续跑/工具/CLI）
+│   ├── run_all.py              一条命令跑全部本地检查（三个测试文件 + demo + MCP）
+│   ├── _support.py             共享夹具：MINIMAL、tmpdir、用例执行器
+│   ├── test_primitives.py      原语：预算/围栏/事件流/续跑/并发/报告（34 条）
+│   ├── test_tools.py           工具与安全：policy/provider/registry 工具（10 条）
+│   ├── test_cli.py             CLI：--check 退出码（1 条）
 │   └── test_layering.py        依赖方向 / 领域词 / 唯一执行循环
 ├── skills/                     技能目录（数据）
 └── mcp_servers.json            MCP 服务端配置
@@ -47,10 +50,12 @@ ForChat/
 ## 跑起来（不需要 key）
 
 ```powershell
-python tests/run_all.py            # 全部本地检查：原语 + 分层 + demo + MCP（推荐）
-python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
-python tests/test_primitives.py    # 原语自检
+python tests/run_all.py            # 全部本地检查（三个测试文件 + 分层 + demo + MCP，推荐）
+python tests/test_primitives.py    # 原语：预算/围栏/事件流/续跑/并发
+python tests/test_tools.py         # 工具与安全：policy / provider / registry
+python tests/test_cli.py           # CLI：--check 退出码
 python tests/test_layering.py      # 架构约束
+python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
 ```
 
 ## 跑真模型
