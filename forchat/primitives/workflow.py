@@ -17,7 +17,10 @@ BUILTIN_TOOLS = {
     "read_worker_report", "wait_workers",
 }
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
-_LIMIT_KEYS = {"max_concurrent", "max_depth", "max_workers", "max_wall_seconds"}
+_LIMIT_KEYS = {
+    "max_concurrent", "max_depth", "max_workers", "max_wall_seconds",
+    "max_total_tokens", "max_total_seconds",
+}
 _WORKER_KEYS = {"role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks"}
 
 

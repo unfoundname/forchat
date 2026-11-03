@@ -11,15 +11,37 @@
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
-      "can_spawn": ["coder"],
-      "tools": ["spawn", "wait_workers", "report", "read", "run_python", "read_worker_report", "read_state"],
-      "budget": {"tokens": 30000, "wall_seconds": 600}
+      "can_spawn": [
+        "coder"
+      ],
+      "tools": [
+        "spawn",
+        "wait_workers",
+        "report",
+        "read",
+        "run_python",
+        "read_worker_report",
+        "read_state"
+      ],
+      "budget": {
+        "tokens": 30000,
+        "wall_seconds": 600
+      }
     },
     "coder": {
       "role_file": "prompts/coder.md",
       "can_spawn": [],
-      "tools": ["write_file", "read", "run_python", "report", "read_state"],
-      "budget": {"tokens": 30000, "wall_seconds": 600}
+      "tools": [
+        "write_file",
+        "read",
+        "run_python",
+        "report",
+        "read_state"
+      ],
+      "budget": {
+        "tokens": 30000,
+        "wall_seconds": 600
+      }
     }
   }
 }

@@ -159,7 +159,14 @@ class Runtime:
 
         self.max_depth = int(workflow.limits.get("max_depth", 3))
         self.max_workers = int(workflow.limits.get("max_workers", 16))
-        self.max_wall_seconds = float(workflow.limits.get("max_wall_seconds", 3600))
+        # 整次运行的总闸：per-worker 预算管单个节点，这里管整棵树
+        self.max_wall_seconds = min(
+            float(workflow.limits.get("max_wall_seconds", 3600)),
+            float(workflow.limits.get("max_total_seconds", 3600)),
+        )
+        self.max_total_tokens = int(workflow.limits.get("max_total_tokens", 1_000_000))
+        self.total_tokens = 0
+        self._budget_tripped = False
         self.run_deadline: float | None = None
         self.scheduler = Scheduler(
             max_concurrent or int(workflow.limits.get("max_concurrent", 2))
@@ -243,6 +250,14 @@ class Runtime:
     def _deadline_exceeded(self) -> bool:
         return self.run_deadline is not None and time.time() > self.run_deadline
 
+    def _charge_total(self, tokens: int) -> None:
+        if tokens <= 0:
+            return
+        with self._lock:
+            self.total_tokens += tokens
+            if self.total_tokens >= self.max_total_tokens:
+                self._budget_tripped = True
+
     # ------------------------------------------------------------------ 入口
     def start(self, task: str, template: str | None = None) -> WorkerInstance | None:
         self.run_deadline = time.time() + self.max_wall_seconds
@@ -259,10 +274,13 @@ class Runtime:
         finally:
             # 无论成功还是异常，都要收掉线程池并留下"运行结束"事件，否则事件流读不出结尾
             self.scheduler.shutdown()
+            final_status = status if status != "done" else ("done" if root.status == "done" else "failed")
             self.log.append(
                 "run_finished",
-                status=status,
+                status=final_status,
                 workers=len(self.workers),
+                total_tokens=self.total_tokens,
+                budget_limit=self.max_total_tokens,
                 scheduler=self.scheduler.stats(),
                 elapsed=round(time.time() - self.started_at, 3),
             )
@@ -287,6 +305,11 @@ class Runtime:
             if len(self.workers) >= self.max_workers:
                 self.log.append("spawn_rejected", reason="max_workers", template=template,
                                 parent=parent.id if parent else None, limit=self.max_workers)
+                return None
+            if self._budget_tripped:
+                self.log.append("spawn_rejected", reason="total_budget", template=template,
+                                parent=parent.id if parent else None,
+                                total_tokens=self.total_tokens, limit=self.max_total_tokens)
                 return None
 
             self._seq += 1
@@ -341,6 +364,11 @@ class Runtime:
                 reason = "budget"
                 self.log.append("budget_exhausted", worker_id=worker.id, budget=worker.budget.snapshot())
                 break
+            if self._budget_tripped:
+                reason = "total_budget"
+                self.log.append("run_budget_exhausted", worker_id=worker.id,
+                                total_tokens=self.total_tokens, limit=self.max_total_tokens)
+                break
 
             try:
                 text, calls, usage = self._stream_round(worker, tpl, messages, rnd)
@@ -352,6 +380,7 @@ class Runtime:
                 last_text = last_text or f"（异常：{type(exc).__name__}: {exc}）"
                 break
             worker.budget.charge(tokens=usage)
+            self._charge_total(usage)
             last_text = text
 
             if not calls:

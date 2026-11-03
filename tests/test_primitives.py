@@ -923,6 +923,40 @@ def test_wait_workers_joins_async_branches() -> None:
     assert done_indexes and max(done_indexes) < report_index
 
 
+def test_total_budget_caps_whole_run() -> None:
+    """整次运行的总 token 闸：超了停止本轮并拒绝新的派生。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["limits"]["max_total_tokens"] = 30
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("read_state", {})]),
+                tool_chunks([("read_state", {})]),
+                tool_chunks([("report", {"summary": "不该到这"})]),
+            ]
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    root = runtime.start("任务")
+
+    assert runtime.log.query(type="run_budget_exhausted"), "应当记录总预算用尽"
+    finished = runtime.log.query(type="run_finished")[-1]
+    assert finished["status"] == "failed", finished
+    assert finished["total_tokens"] >= finished["budget_limit"], finished
+    assert root.status == "failed"
+    assert root.report.summary != "不该到这"
+
+    # 预算用尽后，新派生必须被拒
+    assert runtime._create_worker("coder", "太晚了", None, 1) is None
+    rejected = runtime.log.query(type="spawn_rejected")
+    assert rejected and rejected[-1]["reason"] == "total_budget"
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -968,6 +1002,7 @@ def main() -> int:
         ("截断响应被记录", test_truncated_response_is_recorded),
         ("护栏拦截越界写入", test_policy_blocks_write_file_escape),
         ("wait_workers 汇合并行分支", test_wait_workers_joins_async_branches),
+        ("总预算闸", test_total_budget_caps_whole_run),
     ]
     failed = 0
     for name, fn in checks:

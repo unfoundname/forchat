@@ -86,7 +86,10 @@ examples/workflows/minimal/
 ```json
 {
   "name": "minimal", "version": 1, "entry": "root",
-  "limits": {"max_concurrent": 2, "max_depth": 3, "max_workers": 8},
+  "limits": {
+    "max_concurrent": 2, "max_depth": 3, "max_workers": 8,
+    "max_wall_seconds": 3600, "max_total_tokens": 200000
+  },
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
@@ -98,6 +101,19 @@ examples/workflows/minimal/
   }
 }
 ```
+
+`limits` 是**整次运行**的闸（对应 `budget` 管单个 worker）：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `max_concurrent` | 2 | 并发槽位数 |
+| `max_depth` | 3 | 派生深度 |
+| `max_workers` | 16 | worker 总数 |
+| `max_wall_seconds` | 3600 | 整轮墙钟 |
+| `max_total_tokens` | 1,000,000 | 整轮 token 总闸；超了所有 worker 收尾、拒绝新派生 |
+| `max_total_seconds` | 3600 | 与 `max_wall_seconds` 取小 |
+
+`run_finished` 事件里会记 `total_tokens` 与 `budget_limit`，`--inspect` 能看到。
 
 运行时只给模型七个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
