@@ -283,6 +283,16 @@ root
 全部 `ALL PASS`、退出码 0；master 停在运行前的 `7079301` 未被触碰。
 运行后残留的临时脚本与 worktree 已清理，仓库只留 master。
 
+## 质量门：故意让它失败
+
+真跑过一次"必须失败"的实验（microproject 流程，要求测试里保留 `assert 1 == 2`）：
+
+- coder 没有粉饰，`report.unresolved` 里写明"测试按设计失败、不要修好"；
+- root 也没有宣称完成，unresolved 里写清"若转绿需人工决定"；
+- 同一轮里 verifier 因 `APITimeoutError` 失败——**整次运行没有崩**，root 照常收尾（失败隔离生效）；
+- 这次实验暴露了一个真问题：hook 派生的 review 失败时父 worker 看不到。已修：`spawn(wait=true)`
+  的返回里现在附带"子 worker 的派生：n003-reviewer(reviewer) failed"。
+
 ## 续跑
 
 `python -m forchat` 会把整个 workflow 包快照进运行目录（`workflow.json` + `prompts/`），

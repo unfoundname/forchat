@@ -718,6 +718,42 @@ def test_workflow_rejects_unknown_skill() -> None:
 
 
 
+def test_hook_child_status_surfaced() -> None:
+    """子 worker 的 hook 派生的 worker 失败时，父 worker 必须看得见（否则 review 挂了被吞）。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["tools"] = ["report"]
+    raw["workers"]["coder"]["hooks"] = {
+        "on_done": [{"spawn": "reviewer", "task": "审查", "wait": True}]
+    }
+    raw["workers"]["reviewer"]["tools"] = []
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    text_only = [
+        {"choices": [{"delta": {"content": "reviewer 只说话不交报告"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+    ]
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("spawn", {"template": "coder", "task": "干活", "wait": True})]),
+                tool_chunks([("report", {"summary": "收尾"})]),
+            ],
+            "coder": [tool_chunks([("report", {"summary": "coder 完成"})])],
+            "reviewer": [text_only],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+
+    spawn_result = next(
+        event["result"] for event in runtime.log.query(type="tool_result") if event["tool"] == "spawn"
+    )
+    assert "reviewer" in spawn_result, spawn_result
+    assert "failed" in spawn_result, spawn_result
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
@@ -739,6 +775,7 @@ def main() -> int:
         ("未调 report = 失败", test_no_report_means_failed),
         ("on_report hook", test_on_report_hook),
         ("hook：on_start / on_fail", test_on_start_and_on_fail_hooks),
+        ("hook 子 worker 成败可见", test_hook_child_status_surfaced),
         ("默认不限轮数", test_unlimited_rounds_by_default),
         ("内联 role 模板", test_inline_role_template),
         ("父 worker 读子报告", test_read_worker_report),

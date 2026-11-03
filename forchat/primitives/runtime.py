@@ -540,7 +540,16 @@ class Runtime:
         if wait:
             self._run_worker(child)          # 内联执行，不占并发槽
             summary = (child.report.summary if child.report else "")[:400]
-            return f"子 worker {child.id} 已完成，status={child.status}；report: {summary}"
+            # 子 worker 的 hook 可能又派了 worker（如 review），它们的成败父 worker 必须看得见，
+            # 否则"review 超时/失败"会被静默吞掉。
+            with self._lock:
+                grandchildren = [w for w in self.workers.values() if w.parent_id == child.id]
+            extra = ""
+            if grandchildren:
+                extra = "\n子 worker 的派生：" + "; ".join(
+                    f"{w.id}({w.template}) {w.status}" for w in grandchildren
+                )
+            return f"子 worker {child.id} 已完成，status={child.status}；report: {summary}{extra}"
         self._submit(child)
         return f"子 worker {child.id} 已在后台启动；用 wait_workers 汇合"
 

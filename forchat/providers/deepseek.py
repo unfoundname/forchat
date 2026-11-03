@@ -26,7 +26,7 @@ class DeepSeekProvider:
         self.base_url = base_url
         self.thinking = thinking
         # 单次请求超时：默认 180s。600s 那种长挂会让整个运行卡死且看不出原因。
-        self.request_timeout = request_timeout or float(os.environ.get("FORCHAT_REQUEST_TIMEOUT", 180))
+        self.request_timeout = request_timeout or float(os.environ.get("FORCHAT_REQUEST_TIMEOUT", 240))
         # 单次响应的 token 上限：thinking 也算在内，太小会截断工具参数，所以给足 8k。
         self.max_tokens = max_tokens or int(os.environ.get("FORCHAT_MAX_TOKENS", 8192))
         self._client: Any = None
