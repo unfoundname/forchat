@@ -223,7 +223,13 @@ worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，�
 
 做 5B~10B token 的重型项目：在 `workflow.json` 里显式写
 `limits.max_total_tokens`、`limits.max_wall_seconds`，并给每个模板写 `budget.tokens`。
-预算只是上限，不花完不扣费。
+
+**预算是记账，不是闸**（按"花超一点点没关系"设计）：
+
+- worker 超软预算 → 记 `budget_exceeded`，**继续跑**；
+- 整轮超 `max_total_tokens` → 记 `run_budget_exceeded`，**只拒绝新派生**，正在跑的 worker 收尾；
+- 唯一会真正中断的是**墙钟**（`run_expired`）和手动 `stop_worker`；
+- `run_finished` 带 `budget_exceeded` 标记，方便事后查"这次超了多少"。
 
 **预算和上下文是两件事**：预算累计的是"每轮 prompt + completion 的总和"；单次请求的上下文大小
 由 `FORCHAT_CONTEXT_MESSAGES` / `FORCHAT_CONTEXT_CHARS` 控制（超限裁剪）。1B 级运行还要注意：

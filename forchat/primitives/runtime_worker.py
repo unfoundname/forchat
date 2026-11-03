@@ -104,15 +104,15 @@ class WorkerMixin:
                 self.log.append("run_expired", worker_id=worker.id,
                                 limit=self.max_wall_seconds)
                 break
-            if worker.budget.exhausted():
-                reason = "budget"
-                self.log.append("budget_exhausted", worker_id=worker.id, budget=worker.budget.snapshot())
-                break
-            if self._budget_tripped:
-                reason = "total_budget"
-                self.log.append("run_budget_exhausted", worker_id=worker.id,
+            # 预算是"记账"不是"闸"：超一点点继续跑，只留事件；真正会打断的只有墙钟
+            if worker.budget.exhausted() and not worker.budget.soft_logged:
+                worker.budget.soft_logged = True
+                self.log.append("budget_exceeded", worker_id=worker.id,
+                                budget=worker.budget.snapshot())
+            if self._budget_tripped and not self._total_budget_logged:
+                self._total_budget_logged = True
+                self.log.append("run_budget_exceeded", worker_id=worker.id,
                                 total_tokens=self.total_tokens, limit=self.max_total_tokens)
-                break
 
             self._trim_context(worker, messages)
             try:

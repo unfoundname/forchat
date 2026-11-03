@@ -27,6 +27,7 @@ class Budget:
     spent_prompt_tokens: int = 0
     spent_completion_tokens: int = 0
     spent_cost_usd: float = 0.0
+    soft_logged: bool = False        # 超软预算只记一次事件，不中断
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Budget":
@@ -52,7 +53,8 @@ class Budget:
         self.spent_cost_usd += max(cost_usd, 0.0)
 
     def exhausted(self) -> bool:
-        if self.spent_tokens >= self.tokens or self.spent_seconds >= self.wall_seconds:
+        """软预算是否已超：只用于记账（超了也继续跑），不用于中断。"""
+        if self.spent_tokens >= self.tokens:
             return True
         return self.max_cost_usd is not None and self.spent_cost_usd >= self.max_cost_usd
 

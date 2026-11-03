@@ -222,7 +222,8 @@ def test_runtime_report_includes_cost() -> None:
     assert finished["total_cost_usd"] > 0
 
 
-def test_budget_cost_fence() -> None:
+def test_budget_cost_is_soft() -> None:
+    """成本预算同样是记账：超了继续跑，留 budget_exceeded 事件。"""
     from forchat.pricing import Price, Pricing
 
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
@@ -238,7 +239,7 @@ def test_budget_cost_fence() -> None:
         {
             "root": [
                 tool_chunks([("read_state", {})]),
-                tool_chunks([("report", {"summary": "不该到这"})]),
+                tool_chunks([("report", {"summary": "成本超了也完成"})]),
             ]
         }
     )
@@ -250,8 +251,9 @@ def test_budget_cost_fence() -> None:
     )
     root = runtime.start("任务")
 
-    assert runtime.log.query(type="budget_exhausted"), "成本超限应当判废"
-    assert root.status == "failed"
+    assert runtime.log.query(type="budget_exceeded"), "超预算应当留事件"
+    assert root.status == "done"
+    assert root.report.summary == "成本超了也完成"
 
 
 def test_run_python_timeout_env() -> None:
@@ -365,7 +367,7 @@ def main() -> int:
         ("RetryProvider：重试耗尽", test_retry_provider_exhausts_attempts),
         ("价目表换算", test_pricing_math_and_unknown),
         ("运行时报告含成本", test_runtime_report_includes_cost),
-        ("成本预算闸", test_budget_cost_fence),
+        ("成本预算只记账", test_budget_cost_is_soft),
         ("run_python 超时环境变量", test_run_python_timeout_env),
         ("read offset/limit", test_read_supports_offset_and_limit),
         ("edit_file 唯一/全替换", test_edit_file_unique_and_replace_all),

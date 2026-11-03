@@ -67,6 +67,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         self.total_tokens = 0
         self.total_cost_usd = 0.0
         self._budget_tripped = False
+        self._total_budget_logged = False
         self.run_deadline: float | None = None
         self.scheduler = Scheduler(
             max_concurrent or int(workflow.limits.get("max_concurrent", 2))
@@ -125,6 +126,9 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
                 status=final_status,
                 workers=len(self.workers),
                 total_tokens=self.total_tokens,
+                budget_exceeded=self._budget_tripped or any(
+                    w.budget.soft_logged for w in self.workers.values()
+                ),
                 budget_limit=self.max_total_tokens,
                 **({"total_cost_usd": round(self.total_cost_usd, 6)}
                    if self.pricing is not None else {}),

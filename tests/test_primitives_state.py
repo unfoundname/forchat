@@ -132,8 +132,8 @@ def test_summary_has_totals() -> None:
     assert "workers=1" in summary
 
 
-def test_budget_fence() -> None:
-    """token 预算极小：一轮后判废，事件里有 budget_exhausted。"""
+def test_budget_is_soft_accounting() -> None:
+    """预算是记账不是闸：token 预算超了也继续跑，只记 budget_exceeded。"""
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
     raw["workers"]["root"]["tools"] = ["read_state", "report"]
     raw["workers"]["root"]["can_spawn"] = []
@@ -142,15 +142,15 @@ def test_budget_fence() -> None:
     workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
 
     responder = TemplateResponder(
-        {"root": [tool_chunks([("read_state", {})]), tool_chunks([("report", {"summary": "不该到这"})])]}
+        {"root": [tool_chunks([("read_state", {})]), tool_chunks([("report", {"summary": "超额也完成"})])]}
     )
     runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
     root = runtime.start("任务")
 
-    assert root.status == "failed"
-    events = runtime.log.query(type="budget_exhausted")
-    assert events, "应当记录 budget_exhausted"
-    assert runtime.workers[root.id].report.summary != "不该到这"
+    assert root.status == "done"
+    assert root.report.summary == "超额也完成"
+    assert runtime.log.query(type="budget_exceeded"), "超软预算应当留事件"
+    assert not runtime.log.query(type="budget_exhausted")
 
 
 def test_truncated_response_is_recorded() -> None:
@@ -207,8 +207,8 @@ def test_wait_workers_joins_async_branches() -> None:
     assert done_indexes and max(done_indexes) < report_index
 
 
-def test_total_budget_caps_whole_run() -> None:
-    """整次运行的总 token 闸：超了停止本轮并拒绝新的派生。"""
+def test_total_budget_stops_new_workers_only() -> None:
+    """整轮 token 超了只拒绝新派生，正在跑的 worker 继续收尾（记账不中断）。"""
     raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
     raw["limits"]["max_total_tokens"] = 30
     raw["workers"]["root"]["tools"] = ["read_state", "report"]
@@ -221,21 +221,21 @@ def test_total_budget_caps_whole_run() -> None:
             "root": [
                 tool_chunks([("read_state", {})]),
                 tool_chunks([("read_state", {})]),
-                tool_chunks([("report", {"summary": "不该到这"})]),
+                tool_chunks([("report", {"summary": "跑完收尾"})]),
             ]
         }
     )
     runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
     root = runtime.start("任务")
 
-    assert runtime.log.query(type="run_budget_exhausted"), "应当记录总预算用尽"
+    assert runtime.log.query(type="run_budget_exceeded"), "应当记录总预算超出"
     finished = runtime.log.query(type="run_finished")[-1]
-    assert finished["status"] == "failed", finished
+    assert finished["status"] == "done", finished
     assert finished["total_tokens"] >= finished["budget_limit"], finished
-    assert root.status == "failed"
-    assert root.report.summary != "不该到这"
+    assert root.status == "done"
+    assert root.report.summary == "跑完收尾"
 
-    # 预算用尽后，新派生必须被拒
+    # 预算超了以后，新派生必须被拒
     assert runtime._create_worker("coder", "太晚了", None, 1) is None
     rejected = runtime.log.query(type="spawn_rejected")
     assert rejected and rejected[-1]["reason"] == "total_budget"
@@ -305,10 +305,10 @@ def main() -> int:
         ("崩溃后自动恢复整棵树", test_auto_resume_restores_tree_from_snapshots),
         ("provider 异常只失败单个 worker", test_provider_error_fails_only_worker),
         ("summary 合计行", test_summary_has_totals),
-        ("预算围栏", test_budget_fence),
+        ("预算只记账不中断", test_budget_is_soft_accounting),
         ("截断响应被记录", test_truncated_response_is_recorded),
         ("wait_workers 汇合并行分支", test_wait_workers_joins_async_branches),
-        ("总预算闸", test_total_budget_caps_whole_run),
+        ("总预算只拦新派生", test_total_budget_stops_new_workers_only),
     ]
     return run("原语状态/预算自检", checks)
 
