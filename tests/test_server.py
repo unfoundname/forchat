@@ -106,10 +106,92 @@ def test_http_endpoints_and_sse() -> None:
         server.server_close()
 
 
+def test_auth_required_when_token_set() -> None:
+    """配了 token 就必须带 Authorization，否则 401。"""
+    import urllib.error
+
+    base = tmpdir()
+    manager = RunManager(
+        runs_root=base / ".runs",
+        workflows_root=ROOT / "examples" / "workflows",
+        provider_factory=lambda: FakeProvider(_responder()),
+        token="s3cret",
+        rate_limit_per_min=0,
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(manager))
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as resp:
+                resp.read()
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401, exc.code
+        else:
+            raise AssertionError("无 token 应当 401")
+
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/runs", headers={"Authorization": "Bearer s3cret"}
+        )
+        with urllib.request.urlopen(request, timeout=5) as resp:
+            assert resp.status == 200
+            resp.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_rate_limit() -> None:
+    base = tmpdir()
+    manager = RunManager(
+        runs_root=base / ".runs",
+        workflows_root=ROOT / "examples" / "workflows",
+        provider_factory=lambda: FakeProvider(_responder()),
+        rate_limit_per_min=2,
+    )
+    assert manager.allow("1.2.3.4")
+    assert manager.allow("1.2.3.4")
+    assert not manager.allow("1.2.3.4")
+    assert manager.allow("5.6.7.8")
+
+
+def test_stop_endpoint_stops_running_workers() -> None:
+    """stop 能让在跑的 worker 进入 killed。"""
+
+    long_stream = [{"choices": [{"delta": {"content": "x"}}]} for _ in range(300)]
+    long_stream.append({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+
+    base = tmpdir()
+    manager = RunManager(
+        runs_root=base / ".runs",
+        workflows_root=ROOT / "examples" / "workflows",
+        provider_factory=lambda: FakeProvider(
+            TemplateResponder({"root": [long_stream]}), delay=0.02
+        ),
+        rate_limit_per_min=0,
+    )
+    started = manager.start("minimal", "慢任务")
+    time.sleep(0.4)
+    stopped = manager.stop(started["id"])
+    assert stopped is not None and stopped >= 1, stopped
+
+    deadline = time.time() + 10
+    status = manager.status(started["id"])
+    while time.time() < deadline:
+        status = manager.status(started["id"])
+        if status and status["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert status["status"] in ("killed", "failed"), status
+
+
 def main() -> int:
     checks = [
         ("manager 启停与状态", test_manager_start_and_status),
         ("HTTP 端点与 SSE", test_http_endpoints_and_sse),
+        ("token 鉴权", test_auth_required_when_token_set),
+        ("限流", test_rate_limit),
+        ("停止端点", test_stop_endpoint_stops_running_workers),
     ]
     return run("HTTP/SSE 自检", checks)
 

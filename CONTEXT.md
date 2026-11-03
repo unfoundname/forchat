@@ -26,6 +26,9 @@
   - `spawn` hook：派生新 worker（"完成后自动派 review"）。
 - **plan**：运行时状态（`read_state` / `write_note` 读写），允许随时修改；它存在文件里，不靠对话记忆。
 - **EventLog**：append-only 事件流，是"完整存储"的唯一物理形态。会话、重放、复盘都从它读。
+  超过 `FORCHAT_EVENT_LOG_MB` 自动分段（`events.<n>.jsonl`），关键事件 fsync。
+- **重试**：provider 层只重试"首片之前"的瞬时错误；worker 层用模板 `retries` 兜基础设施抖动，业务失败不重试。
+- **状态**：`pending / running / done / failed / killed / interrupted`。
 - **Replay**：只读重建一次运行——`review()` 流水账、`tree()` 派生树、`summary()` 每个 worker 的消耗与摘要。
 - **续跑（resume）**：同一 run 目录再次运行。历史 worker 只读、序号接着涨，根 worker 的系统提示里带历史摘要。
 - **中断（interrupted）**：上次进程崩溃/被杀时没有 `worker_done` 的 worker；续跑时标记为 `interrupted`，任务原文会列进根提示，由模型决定重新派发或接手（引擎不自动复活它）。

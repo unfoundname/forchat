@@ -22,7 +22,8 @@ _LIMIT_KEYS = {
     "max_total_tokens", "max_total_seconds", "max_total_cost_usd",
 }
 _WORKER_KEYS = {
-    "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks", "scope",
+    "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks",
+    "scope", "retries",
 }
 
 
@@ -41,6 +42,7 @@ class WorkerTemplate:
     budget: Budget = field(default_factory=Budget)
     hooks: dict[str, list[dict]] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)   # 模板级默认授权范围；空 = 继承父 worker
+    retries: int = 0                                 # 仅对"瞬时错误"重跑该 worker，默认 0
 
 
 @dataclass
@@ -186,6 +188,10 @@ class WorkflowDef:
         if max_rounds is not None and (not isinstance(max_rounds, int) or max_rounds < 1):
             errors.append(f"worker {name} 的 max_rounds 必须是正整数（不写 = 不限）")
 
+        retries = spec.get("retries", 0)
+        if not isinstance(retries, int) or retries < 0:
+            errors.append(f"worker {name} 的 retries 必须是非负整数")
+
         try:
             budget = Budget.from_dict(spec.get("budget"))
         except ValueError as exc:
@@ -220,5 +226,6 @@ class WorkflowDef:
                 budget=budget,
                 hooks={k: list(v) for k, v in hook_map.items()},
                 scope=[str(s) for s in (spec.get("scope") or [])],
+                retries=int(spec.get("retries") or 0),
             )
         return errors

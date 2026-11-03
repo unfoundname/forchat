@@ -51,14 +51,25 @@ ForChat/
 └── mcp_servers.json            MCP 服务端配置
 ```
 
+## 安装
+
+```powershell
+pip install -e ".[dev]"     # 开发：装上 forchat 命令 + pytest
+pip install -e ".[llm]"     # 接真模型：装 openai
+```
+
+装完后可以直接 `forchat --help`（入口 `forchat.__main__:main`）。
+
 ## 跑起来（不需要 key）
 
 ```powershell
-python tests/run_all.py            # 全部本地检查（三个测试文件 + 分层 + demo + MCP，推荐）
+python tests/run_all.py            # 全部本地检查（六个测试文件 + 分层 + demo + MCP，推荐）
+pytest -q                          # 同一批用例走 pytest（CI 用的就是这个）
 python tests/test_primitives.py    # 原语：预算/围栏/事件流/续跑/并发
 python tests/test_tools.py         # 工具与安全：policy / provider / registry
 python tests/test_cli.py           # CLI：--check 退出码
-python tests/test_layering.py      # 架构约束
+python tests/test_server.py        # HTTP/SSE：端点、鉴权、限流、停止
+python tests/test_subproc.py       # 受限子进程：超时/脱敏/内存上限
 python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
 ```
 
@@ -246,6 +257,10 @@ def upper(text: str) -> str:
 - 模型/网络异常只让当前 worker 失败（事件 `worker_error`），整次运行继续；
 - **瞬时错误自动重试**：`RetryProvider` 只对超时/连接/限流/5xx 重试，且**只在还没吐出任何分片时**重试
   （已流出去的内容不能重来）；次数用 `FORCHAT_RETRIES` 控制，默认 2；
+- **worker 级重试**：模板写 `"retries": N`，worker 因 `reason=error` 失败时会自动重跑（新会话），
+  用来兜住 provider 之外的基础设施抖动；业务失败不重试；
+- **事件流滚动**：单文件超过 `FORCHAT_EVENT_LOG_MB`（默认 32）滚成 `events.<n>.jsonl`，
+  `read()` 按段拼回；`report`/`worker_done`/`run_finished` 额外 fsync，崩溃最多丢正在写的那一行；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
 - 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完；
 - **协作式叫停**：`stop_worker(worker_id)` 让后台分支在下一个分片/下一轮边界退出，状态 `killed`
@@ -400,9 +415,15 @@ python -m forchat --serve 8000
 | `POST /runs` | `{"workflow": "minimal", "goal": "..."}` → `202 {"id", "run_dir"}` |
 | `GET /runs/<id>` | 状态、worker 数、tokens、最后一份报告 |
 | `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
+| `POST /runs/<id>/stop` | 请求停止该运行里所有在跑的 worker（协作式） |
 
-只依赖标准库，默认绑定 `127.0.0.1`，**没有鉴权**——鉴权/多租户/限流属于部署层
-（反向代理 + token），不要直接暴露公网。
+鉴权与限流：
+
+- 设了 `FORCHAT_SERVER_TOKEN` 就要求 `Authorization: Bearer <token>`，否则 401；
+- 绑定非本机地址**必须**设 token，否则启动直接拒绝；
+- 每 IP 每分钟 `FORCHAT_RATE_LIMIT`（默认 120）次，超了 429。
+
+它仍然只是"能用"级别：没有 TLS、没有多租户、SSE 只读当前事件段（轮转后的历史段要用 `--inspect`）。
 
 ## 续跑
 

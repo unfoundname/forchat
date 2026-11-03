@@ -114,3 +114,4 @@ class WorkerInstance:
     artifacts: list[str] = field(default_factory=list)
     # 授权范围（相对项目根的目录）。空 = 整个项目根；非空 = 只允许在这些目录内改动
     scope: list[str] = field(default_factory=list)
+    retries_used: int = 0

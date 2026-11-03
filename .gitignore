@@ -11,3 +11,7 @@ node_modules/
 .worktrees/
 .forchat-backups/
 pricing.json
+*.egg-info/
+build/
+dist/
+.pytest_cache/

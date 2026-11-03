@@ -846,6 +846,62 @@ def test_interrupted_worker_recovered_on_resume() -> None:
     assert "上次没跑完的任务" in system
 
 
+def test_event_log_rotation_and_integrity() -> None:
+    """事件流超过阈值要滚动分段，read() 仍按顺序拼回全部事件。"""
+    import os
+
+    old = os.environ.get("FORCHAT_EVENT_LOG_MB")
+    os.environ["FORCHAT_EVENT_LOG_MB"] = "0.004"
+    try:
+        run_dir = tmpdir()
+        log = EventLog(run_dir)
+        for index in range(300):
+            log.append("noise", worker_id=f"w{index:03d}", payload="x" * 80)
+        log.append("run_finished", status="done")
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_EVENT_LOG_MB", None)
+        else:
+            os.environ["FORCHAT_EVENT_LOG_MB"] = old
+
+    segments = sorted(run_dir.glob("events*.jsonl"))
+    assert len(segments) >= 2, segments
+    events = log.read()
+    assert len(events) == 301, len(events)
+    assert events[-1]["type"] == "run_finished"
+
+
+def test_worker_retries_transient_error() -> None:
+    """模板 retries=1：worker 遇到瞬时异常后自动重跑一次并成功。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["retries"] = 1
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    class Flaky:
+        name = "flaky"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def stream(self, model, messages, tools=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("瞬时错误")
+            yield from tool_chunks([("report", {"summary": "重试后成功"})])
+
+    provider = Flaky()
+    runtime = Runtime(workflow, provider, tmpdir())
+    root = runtime.start("任务")
+
+    assert provider.calls == 2
+    assert runtime.log.query(type="worker_retry")
+    assert root.status == "done"
+    assert root.report.summary == "重试后成功"
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
@@ -886,6 +942,8 @@ def main() -> int:
         ("越权授权被拒", test_spawn_cannot_grant_beyond_scope),
         ("stop_worker 叫停分支", test_stop_worker_kills_running_child),
         ("中断 worker 续跑可见", test_interrupted_worker_recovered_on_resume),
+        ("事件流滚动与完整性", test_event_log_rotation_and_integrity),
+        ("worker 级重试", test_worker_retries_transient_error),
     ]
     return run("原语自检", checks)
 

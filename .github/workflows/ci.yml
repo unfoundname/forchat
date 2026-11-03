@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install
+        run: pip install -e ".[dev]"
+      - name: pytest
+        run: pytest -q
+      - name: layering
+        run: python tests/test_layering.py
+      - name: demo
+        run: python examples/run_demo.py

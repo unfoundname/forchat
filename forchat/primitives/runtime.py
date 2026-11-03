@@ -326,7 +326,11 @@ class Runtime:
         finally:
             # 无论成功还是异常，都要收掉线程池并留下"运行结束"事件，否则事件流读不出结尾
             self.scheduler.shutdown()
-            final_status = status if status != "done" else ("done" if root.status == "done" else "failed")
+            final_status = status
+            if status == "done":
+                final_status = "done" if root.status == "done" else (
+                    "killed" if root.status == "killed" else "failed"
+                )
             self.log.append(
                 "run_finished",
                 status=final_status,
@@ -505,6 +509,15 @@ class Runtime:
         self._finish(worker, reason, reported=reported, last_text=last_text)
 
     def _finish(self, worker: WorkerInstance, reason: str, reported: bool, last_text: str = "") -> None:
+        tpl = self.wf.workers[worker.template]
+        if reason == "error" and worker.retries_used < tpl.retries:
+            worker.retries_used += 1
+            worker.report = None
+            self.log.append("worker_retry", worker_id=worker.id,
+                            attempt=worker.retries_used, retries=tpl.retries)
+            self._run_worker(worker)
+            return
+
         if worker.report is None:
             worker.report = self._fallback_report(worker, last_text)
         if reason == "stopped":
@@ -729,6 +742,17 @@ class Runtime:
         event.set()
         self.log.append("worker_stop_requested", worker_id=target_id, by=worker.id)
         return f"已请求停止 {target_id}（协作式：下一分片/下一轮退出，不会立刻杀掉）"
+
+    def stop_all(self) -> int:
+        """请求停止所有仍在运行的 worker（服务端取消端点用）。返回受影响的 worker 数。"""
+        count = 0
+        for wid, item in self.workers.items():
+            if item.status in ("pending", "running"):
+                self._stop_events.setdefault(wid, threading.Event()).set()
+                count += 1
+        if count:
+            self.log.append("stop_all_requested", workers=count)
+        return count
 
     def _tool_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         declared = [str(a) for a in args.get("artifacts") or []]

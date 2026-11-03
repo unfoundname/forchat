@@ -24,8 +24,8 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 | 能力工具 | `read` `list_dir` `run_python(cwd)` `write_file`（覆盖前备份）`git`（子命令白名单）+ MCP 工具 |
 | 记录 | append-only 事件流、`Replay.review/tree/summary`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
-| 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、截断检测、预算熔断、续跑、中断 worker 可见 |
-| 服务 | HTTP/SSE（`--serve`，stdlib，仅本机）：启动运行、查状态、订阅事件流 |
+| 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、worker 级 `retries`、截断检测、预算熔断、续跑、中断 worker 可见 |
+| 服务 | HTTP/SSE（`--serve`，stdlib）：启动运行、查状态、订阅事件流；Bearer token、限流、停止端点 |
 | 计费 | `pricing.json` 价目表 → `report.cost_usd` / `--inspect` 成本行；缺价目显示未知 |
 
 ## 3. 真跑证据（可在 `.runs/` 复查）
@@ -48,15 +48,18 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-python tests/run_all.py     # 68 条用例 + 分层校验 + demo + MCP 自检
+pytest -q                    # 73 条用例（CI 用这个）
+python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
-- `tests/test_primitives.py`：38 条（预算/围栏/事件流/续跑/中断/并发/报告/停止/成本）
+- `tests/test_primitives.py`：40 条（预算/围栏/事件流滚动/续跑/中断/并发/报告/停止/成本/重试）
 - `tests/test_tools.py`：20 条（policy/scope/环境擦除/备份/provider/重试/工具/成本/超时）
 - `tests/test_cli.py`：5 条（--check / --inspect / --runs）
-- `tests/test_server.py`：2 条（HTTP 端点 + SSE）
+- `tests/test_server.py`：5 条（HTTP / SSE / 鉴权 / 限流 / 停止）
 - `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环
+
+CI：`.github/workflows/ci.yml`（ubuntu + Python 3.12，pytest + 分层 + demo）。
 
 ## 5. 已知边界（不是缺陷，是范围）
 

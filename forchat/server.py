@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,6 +34,8 @@ class RunManager:
         external_tools_factory: Callable[[], dict] | None = None,
         skill_loader: Callable[[str], str | None] | None = None,
         guard: Callable[[str, str, list[str]], str | None] | None = None,
+        token: str | None = None,
+        rate_limit_per_min: int = 120,
     ) -> None:
         self.runs_root = Path(runs_root)
         self.workflows_root = Path(workflows_root)
@@ -40,7 +43,11 @@ class RunManager:
         self.external_tools_factory = external_tools_factory
         self.skill_loader = skill_loader
         self.guard = guard
+        self.token = token
+        self.rate_limit_per_min = rate_limit_per_min
         self._threads: dict[str, threading.Thread] = {}
+        self._runtimes: dict[str, Runtime] = {}
+        self._rate: dict[str, tuple[float, int]] = {}
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ 启动
@@ -66,8 +73,29 @@ class RunManager:
         thread = threading.Thread(target=runtime.start, args=(goal,), name=f"run-{run_dir.name}", daemon=True)
         with self._lock:
             self._threads[run_dir.name] = thread
+            self._runtimes[run_dir.name] = runtime
         thread.start()
         return {"id": run_dir.name, "run_dir": str(run_dir)}
+
+    def stop(self, run_id: str) -> int | None:
+        """请求停止某个运行里的所有 worker；运行不存在返回 None。"""
+        runtime = self._runtimes.get(run_id)
+        if runtime is None:
+            return None
+        return runtime.stop_all()
+
+    def allow(self, client_ip: str) -> bool:
+        """极简限流：每 IP 每分钟 N 次（0 = 关闭）。"""
+        if self.rate_limit_per_min <= 0:
+            return True
+        now = time.time()
+        with self._lock:
+            start, count = self._rate.get(client_ip, (now, 0))
+            if now - start >= 60:
+                start, count = now, 0
+            count += 1
+            self._rate[client_ip] = (start, count)
+            return count <= self.rate_limit_per_min
 
     # ------------------------------------------------------------------ 读
     def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -120,7 +148,25 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _authorized(self) -> bool:
+            if not manager.token:
+                return True
+            expected = f"Bearer {manager.token}"
+            return self.headers.get("Authorization", "") == expected
+
+        def _deny(self) -> bool:
+            """鉴权 + 限流；被拒时已经写好响应，返回 True。"""
+            if not self._authorized():
+                self._json(401, {"error": "unauthorized"})
+                return True
+            if not manager.allow(self.client_address[0]):
+                self._json(429, {"error": "rate limited"})
+                return True
+            return False
+
         def do_GET(self) -> None:                  # noqa: N802
+            if self._deny():
+                return
             path = urlparse(self.path).path.rstrip("/") or "/"
             if path == "/health":
                 self._json(200, {"ok": True})
@@ -140,7 +186,18 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
             self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:                 # noqa: N802
-            if urlparse(self.path).path.rstrip("/") != "/runs":
+            if self._deny():
+                return
+            path = urlparse(self.path).path.rstrip("/")
+            if path.startswith("/runs/") and path.endswith("/stop"):
+                run_id = path.split("/")[2]
+                stopped = manager.stop(run_id)
+                if stopped is None:
+                    self._json(404, {"error": "run not found"})
+                else:
+                    self._json(200, {"id": run_id, "stopped_workers": stopped})
+                return
+            if path != "/runs":
                 self._json(404, {"error": "not found"})
                 return
             length = int(self.headers.get("Content-Length", "0"))
@@ -205,8 +262,11 @@ def serve(
     manager_factory: Callable[[], RunManager] | None = None,
 ) -> None:
     manager = manager_factory() if manager_factory else _default_manager()
+    if not manager.token and host not in ("127.0.0.1", "localhost"):
+        raise SystemExit("绑定非本机地址时必须设置 FORCHAT_SERVER_TOKEN")
     server = ThreadingHTTPServer((host, port), _make_handler(manager))
-    print(f"[serve] http://{host}:{port}  （无鉴权，仅限本机）")
+    auth = "Bearer token" if manager.token else "无鉴权（仅建议本机）"
+    print(f"[serve] http://{host}:{port}  auth={auth}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -229,4 +289,6 @@ def _default_manager() -> RunManager:
         external_tools_factory=build_tools,
         skill_loader=build_skill_loader(),
         guard=Policy(root).check,
+        token=os.environ.get("FORCHAT_SERVER_TOKEN") or None,
+        rate_limit_per_min=int(os.environ.get("FORCHAT_RATE_LIMIT", 120)),
     )
