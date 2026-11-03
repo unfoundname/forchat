@@ -12,7 +12,7 @@ from ..registry import tool
 
 ALLOWED = {
     "status", "diff", "log", "show", "add", "commit", "branch",
-    "checkout", "switch", "worktree", "rev-parse", "ls-files", "stash",
+    "checkout", "switch", "worktree", "rev-parse", "ls-files", "stash", "merge",
 }
 TIMEOUT = 60
 

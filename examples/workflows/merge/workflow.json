@@ -1,0 +1,19 @@
+{
+  "name": "merge",
+  "version": 1,
+  "entry": "root",
+  "limits": {
+    "max_concurrent": 2,
+    "max_depth": 2,
+    "max_workers": 4,
+    "max_wall_seconds": 600
+  },
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": [],
+      "tools": ["git", "read_state", "write_note", "report", "read"],
+      "budget": {"tokens": 20000, "wall_seconds": 400}
+    }
+  }
+}
