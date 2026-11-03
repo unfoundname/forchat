@@ -93,8 +93,11 @@ def test_policy_path_guard() -> None:
     assert policy.check("read", json.dumps({"path": "ok.txt"})) is None
     assert "越界" in (policy.check("read", json.dumps({"path": "../x.txt"})) or "")
     assert policy.check("read", json.dumps({"path": ".env"})) is not None
-    assert policy.check("run_python", json.dumps({"script": "ok.py"})) is not None
+    # run_python：项目根内的任意 .py 都允许（worktree 里的测试也要能跑）
+    assert policy.check("run_python", json.dumps({"script": "ok.py"})) is None
     assert policy.check("run_python", json.dumps({"script": "skills/demo/a.py"})) is None
+    assert policy.check("run_python", json.dumps({"script": "../escape.py"})) is not None
+    assert policy.check("run_python", json.dumps({"script": "skills/demo/a.txt"})) is not None
 
 
 def test_policy_denies_cwd_escape() -> None:
@@ -164,7 +167,7 @@ def test_runtime_guard_blocks_tool() -> None:
         workflow,
         FakeProvider(responder),
         tmpdir(),
-        guard=lambda name, args: "测试拒绝" if name == "write_note" else None,
+        guard=lambda name, args, scope: "测试拒绝" if name == "write_note" else None,
     )
     root = runtime.start("任务")
 
@@ -244,6 +247,27 @@ def test_run_python_cwd() -> None:
 
 
 
+def test_policy_scope_enforced() -> None:
+    """scope 非空时，只有授权目录能改；只读仍限项目根；git 路径也受 scope 约束。"""
+    from forchat.policy import Policy
+
+    root = tmpdir()
+    policy = Policy(root)
+    scope = [".worktrees/a"]
+
+    assert policy.check("write_file", json.dumps({"path": ".worktrees/a/x.py", "content": "x"}), scope) is None
+    denied = policy.check("write_file", json.dumps({"path": ".worktrees/b/x.py", "content": "x"}), scope)
+    assert denied and "授权范围" in denied, denied
+
+    # 只读工具不受 scope 限制（仍限项目根）——读别人的 worktree 不产生副作用
+    assert policy.check("read", json.dumps({"path": ".worktrees/b/x.py"}), scope) is None
+
+    denied_git = policy.check(
+        "git", json.dumps({"args": "worktree add .worktrees/b -b feat-b"}), scope
+    )
+    assert denied_git and "授权范围" in denied_git, denied_git
+
+
 def main() -> int:
     checks = [
         ("能力工具桥接：外部工具注入", test_external_tools_bridge),
@@ -256,6 +280,7 @@ def main() -> int:
         ("write_file 工具", test_write_file_tool),
         ("git 白名单", test_git_tool_whitelist),
         ("run_python 支持 cwd", test_run_python_cwd),
+        ("scope 授权范围", test_policy_scope_enforced),
     ]
     return run("工具与安全自检", checks)
 

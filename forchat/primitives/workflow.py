@@ -21,7 +21,9 @@ _LIMIT_KEYS = {
     "max_concurrent", "max_depth", "max_workers", "max_wall_seconds",
     "max_total_tokens", "max_total_seconds",
 }
-_WORKER_KEYS = {"role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks"}
+_WORKER_KEYS = {
+    "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks", "scope",
+}
 
 
 class WorkflowError(ValueError):
@@ -38,6 +40,7 @@ class WorkerTemplate:
     skills: list[str] = field(default_factory=list)
     budget: Budget = field(default_factory=Budget)
     hooks: dict[str, list[dict]] = field(default_factory=dict)
+    scope: list[str] = field(default_factory=list)   # 模板级默认授权范围；空 = 继承父 worker
 
 
 @dataclass
@@ -216,5 +219,6 @@ class WorkflowDef:
                 skills=list(spec.get("skills") or []),
                 budget=budget,
                 hooks={k: list(v) for k, v in hook_map.items()},
+                scope=[str(s) for s in (spec.get("scope") or [])],
             )
         return errors

@@ -7,6 +7,7 @@
    - worktree 目录：`.worktrees/<名字>`（相对于项目根）
    - 分支名：`feat-<名字>`
    - 要写的文件路径与内容要求
+   - **`paths` 参数授给它自己的目录**，例如 `paths=[".worktrees/a"]`——这样它写不到别人的 worktree
 3. 等它们跑完（下一轮读 `read_worker_report` 或直接看报告），用 `git worktree list` 核对两个 worktree 是否都存在。
 4. 调用 `report`：列出每个 worktree、分支、提交哈希、核对证据。
 

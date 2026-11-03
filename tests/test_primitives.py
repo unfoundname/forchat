@@ -754,6 +754,37 @@ def test_hook_child_status_surfaced() -> None:
     assert "failed" in spawn_result, spawn_result
 
 
+def test_spawn_cannot_grant_beyond_scope() -> None:
+    """父 worker 不能把超出自己范围的目录授权给子 worker。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
+    raw["workers"]["root"]["can_spawn"] = ["coder"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["scope"] = [".worktrees/a"]
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([(
+                    "spawn",
+                    {"template": "coder", "task": "越权授权", "wait": True,
+                     "paths": [".worktrees/b"]},
+                )]),
+                tool_chunks([("report", {"summary": "授权被拒后收尾"})]),
+            ],
+            "coder": [tool_chunks([("report", {"summary": "不该被创建"})])],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+
+    rejected = runtime.log.query(type="spawn_rejected")
+    assert rejected and rejected[0]["reason"] == "scope_grant", rejected
+    assert len(runtime.workers) == 1, runtime.workers
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
@@ -791,6 +822,7 @@ def main() -> int:
         ("wait_workers 汇合并行分支", test_wait_workers_joins_async_branches),
         ("总预算闸", test_total_budget_caps_whole_run),
         ("workflow 拒绝未知技能", test_workflow_rejects_unknown_skill),
+        ("越权授权被拒", test_spawn_cannot_grant_beyond_scope),
     ]
     return run("原语自检", checks)
 

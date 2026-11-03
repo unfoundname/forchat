@@ -7,6 +7,7 @@
    - worktree：`.worktrees/<名字>`，分支：`feat-<名字>`（三个都不同）
    - 模块文件：`<名字>_utils.py`，测试文件：`test_<名字>_utils.py`
    - 验收：在 worktree 内跑测试，看到 `ALL PASS` 再 commit
+   - **`paths` 参数授给它自己的目录**（如 `paths=[".worktrees/a"]`），防止写到别人的分支
 3. 立刻 `wait_workers`（timeout 给足）汇合，读三份报告，确认三个分支都有提交。
 4. **串行合并**（一次一个）：
    ```

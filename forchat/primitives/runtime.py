@@ -21,6 +21,15 @@ from .store import EventLog
 from .types import Budget, WorkerInstance, Report
 from .workflow import WorkerTemplate, WorkflowDef
 
+
+def _is_inside(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 TOOL_SPECS: dict[str, dict] = {
     "spawn": {
         "type": "function",
@@ -33,6 +42,12 @@ TOOL_SPECS: dict[str, dict] = {
                     "template": {"type": "string", "description": "worker 模板名"},
                     "task": {"type": "string", "description": "交给它的完整任务描述"},
                     "wait": {"type": "boolean", "description": "是否等它跑完再继续，默认 true"},
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "授权给子 worker 的目录（相对项目根），例如 [\".worktrees/a\"]；"
+                                       "省略则继承你的范围。只能授予你自己范围内的目录。",
+                    },
                 },
                 "required": ["template", "task"],
             },
@@ -287,7 +302,14 @@ class Runtime:
         return root
 
     # ------------------------------------------------------------------ worker
-    def _create_worker(self, template: str, task: str, parent: WorkerInstance | None, depth: int) -> WorkerInstance | None:
+    def _create_worker(
+        self,
+        template: str,
+        task: str,
+        parent: WorkerInstance | None,
+        depth: int,
+        scope: list[str] | None = None,
+    ) -> WorkerInstance | None:
         with self._lock:
             if template not in self.wf.workers:
                 self.log.append("spawn_rejected", reason="unknown_template", template=template,
@@ -315,6 +337,13 @@ class Runtime:
             self._seq += 1
             worker_id = f"n{self._seq:03d}-{template}"
             tpl = self.wf.workers[template]
+            parent_scope = list(parent.scope) if parent else []
+            if scope is not None:
+                chosen_scope = list(scope)
+            elif tpl.scope:
+                chosen_scope = list(tpl.scope)
+            else:
+                chosen_scope = parent_scope
             worker = WorkerInstance(
                 id=worker_id,
                 template=template,
@@ -323,10 +352,11 @@ class Runtime:
                 depth=depth,
                 budget=Budget(**{k: getattr(tpl.budget, k) for k in
                                  ("tokens", "wall_seconds")}),
+                scope=chosen_scope,
             )
             self.workers[worker_id] = worker
         self.log.append("worker_created", worker_id=worker_id, template=template, depth=depth,
-                        parent=parent.id if parent else None, task=task)
+                        parent=parent.id if parent else None, task=task, scope=chosen_scope)
         return worker
 
     def _run_worker(self, worker: WorkerInstance) -> None:
@@ -500,7 +530,7 @@ class Runtime:
             return f"错误：模板 {tpl.name} 没有授权使用工具 {name}"
 
         if self.guard is not None:
-            reason = self.guard(name, call["arguments"] or "{}")
+            reason = self.guard(name, call["arguments"] or "{}", worker.scope)
             if reason:
                 self.log.append("tool_denied", worker_id=worker.id, tool=name, reason=reason)
                 return f"错误：策略拒绝执行 {name}：{reason}"
@@ -527,13 +557,29 @@ class Runtime:
         template = str(args.get("template", ""))
         task = str(args.get("task", ""))
         wait = bool(args.get("wait", True))
+        raw_paths = args.get("paths") or []
 
         if template not in tpl.can_spawn:
             self.log.append("spawn_rejected", worker_id=worker.id, reason="not_allowed",
                             template=template, allowed=tpl.can_spawn)
             return f"错误：{tpl.name} 不能派 {template}，允许的是 {tpl.can_spawn or '无'}"
 
-        child = self._create_worker(template, task, parent=worker, depth=worker.depth + 1)
+        granted: list[str] | None = None
+        if raw_paths:
+            granted = [str(item) for item in raw_paths]
+            project = Path.cwd().resolve()
+            parent_roots = [(project / part).resolve() for part in worker.scope] or [project]
+            for part in granted:
+                target = (project / part).resolve()
+                if not _is_inside(target, project) or not any(
+                    _is_inside(target, base) for base in parent_roots
+                ):
+                    self.log.append("spawn_rejected", worker_id=worker.id, reason="scope_grant",
+                                    template=template, requested=granted)
+                    return f"错误：不能把 {part} 授权给子 worker——超出你自己的范围 {worker.scope or ['项目根']}"
+
+        child = self._create_worker(template, task, parent=worker, depth=worker.depth + 1,
+                                    scope=granted)
         if child is None:
             return "错误：子 worker被资源或深度限制拒绝"
 
