@@ -80,6 +80,19 @@ python -m forchat --resume .runs/<run> "继续推进"                    # 在�
 | workflow | 可加载配置：worker 模板、can_spawn、预算、hook、限制 | `examples/workflows/<name>/workflow.json` |
 | 运行输入 | 用户目标与澄清结果（spec/plan） | 运行时状态，不进仓库 |
 
+## 示例一览
+
+六个 workflow 包各自验证一组原语，互相不重复（prompt 也几乎没有公共模板——审计过，唯一重复的行是 `## 工作方式` 这个小标题）：
+
+| 包 | 演示什么 | 主要原语 |
+|---|---|---|
+| `minimal` | 最小闭环：root → coder → hook 派生 reviewer | spawn / hook / report |
+| `delivery` | 真落盘 + git 核对 | write_file / git |
+| `microproject` | 写代码 + 写测试 + 自动验收 | run_python / read |
+| `parallel` | 两个 coder 并行后汇合 | spawn(wait=false) / wait_workers |
+| `worktree` | 隔离分支开发 + worktree 内自测 | git worktree / run_python(cwd) |
+| `merge` | 串行合并多个功能分支 | git merge |
+
 ## 写一个 workflow 包
 
 ```

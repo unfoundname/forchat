@@ -1,16 +1,21 @@
-"""CLI 自检：--check 的进程级行为与退出码。
+"""CLI 自检：--check / --inspect 的进程级行为与退出码。
 
     python tests/test_cli.py
 """
 from __future__ import annotations
 
+import io
 import json
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _support import run
+from _support import MINIMAL, run, tmpdir
+
+from forchat.primitives import Runtime, WorkflowDef
+from forchat.providers import FakeProvider, TemplateResponder, tool_chunks
 
 
 def test_check_cli_exit_codes() -> None:
@@ -38,10 +43,41 @@ def test_check_cli_exit_codes() -> None:
     assert "[check] 失败" in bad.stdout
 
 
+def test_inspect_prints_tree_budget_and_recent() -> None:
+    """--inspect：树 + 每个 worker 一行 + 预算行 + 最近事件。"""
+    from forchat.__main__ import _inspect
+
+    workflow = WorkflowDef.load(MINIMAL)
+    responder = TemplateResponder({"root": [tool_chunks([("report", {"summary": "完成"})])]})
+    run_dir = tmpdir()
+    Runtime(workflow, FakeProvider(responder), run_dir).start("任务")
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = _inspect(run_dir)
+    output = buffer.getvalue()
+
+    assert code == 0, output
+    assert "n001-root" in output
+    assert "运行: status=" in output
+    assert "合计:" in output
+
+
+def test_inspect_missing_dir_returns_2() -> None:
+    from forchat.__main__ import _inspect
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = _inspect(tmpdir() / "does-not-exist")
+    assert code == 2
+    assert "没有事件流" in buffer.getvalue()
+
 
 def main() -> int:
     checks = [
         ("--check 进程级退出码", test_check_cli_exit_codes),
+        ("--inspect 输出树/预算/最近事件", test_inspect_prints_tree_budget_and_recent),
+        ("--inspect 缺失目录返回 2", test_inspect_missing_dir_returns_2),
     ]
     return run("CLI 自检", checks)
 
