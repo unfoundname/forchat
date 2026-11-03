@@ -737,6 +737,96 @@ def test_check_cli_exit_codes() -> None:
     assert "[check] 失败" in bad.stdout
 
 
+def test_budget_fence() -> None:
+    """token 预算极小：一轮后判废，事件里有 budget_exhausted。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"]["budget"] = {"tokens": 1, "wall_seconds": 600}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {"root": [tool_chunks([("read_state", {})]), tool_chunks([("report", {"summary": "不该到这"})])]}
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    root = runtime.start("任务")
+
+    assert root.status == "failed"
+    events = runtime.log.query(type="budget_exhausted")
+    assert events, "应当记录 budget_exhausted"
+    assert runtime.workers[root.id].report.summary != "不该到这"
+
+
+def test_runtime_serial_when_concurrency_one() -> None:
+    """max_concurrent=1：两个异步分支必须串行（峰值 1）。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["limits"]["max_concurrent"] = 1
+    raw["workers"]["root"]["tools"] = ["spawn", "report"]
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["coder"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    coder_reply = tool_chunks([("report", {"summary": "分支完成"})])
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks(
+                    [
+                        ("spawn", {"template": "coder", "task": "A", "wait": False}),
+                        ("spawn", {"template": "coder", "task": "B", "wait": False}),
+                    ]
+                ),
+                tool_chunks([("report", {"summary": "两个分支已排队"})]),
+            ],
+            "coder": [coder_reply, coder_reply],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder, delay=0.01), tmpdir())
+    runtime.start("串行任务")
+
+    assert runtime.scheduler.stats()["peak_running"] == 1, runtime.scheduler.stats()
+    coders = [w for w in runtime.workers.values() if w.template == "coder"]
+    assert len(coders) == 2 and all(w.status == "done" for w in coders)
+
+
+def test_inline_role_template() -> None:
+    """模板不写 role_file，直接内联 role 字符串也要能跑。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    root = raw["workers"]["root"]
+    root.pop("role_file", None)
+    root["role"] = "你是内联角色，收到任务后直接 report。"
+    root["can_spawn"] = []
+    root["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    provider = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("report", {"summary": "ok"})])]})
+    )
+    Runtime(workflow, provider, tmpdir()).start("任务")
+    system = provider.seen[0][0]["content"]
+    assert "你是内联角色" in system
+
+
+def test_write_file_tool() -> None:
+    from forchat import registry, tools  # noqa: F401  触发注册
+
+    target = tmpdir() / "deep" / "note.txt"
+    result = registry.execute("write_file", json.dumps({"path": str(target), "content": "内容"}))
+    assert "已写入" in result, result
+    assert target.read_text(encoding="utf-8") == "内容"
+
+
+def test_git_tool_whitelist() -> None:
+    from forchat import registry, tools  # noqa: F401
+
+    denied = registry.execute("git", json.dumps({"args": "rm -rf ."}))
+    assert "不在白名单" in denied, denied
+
+    status = registry.execute("git", json.dumps({"args": "status --short"}))
+    assert "不在白名单" not in status, status
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -774,6 +864,11 @@ def main() -> int:
         ("围栏：worker 数量上限", test_max_workers_fence),
         ("hook：on_start / on_fail", test_on_start_and_on_fail_hooks),
         ("--check 进程级退出码", test_check_cli_exit_codes),
+        ("预算围栏", test_budget_fence),
+        ("并发=1 时串行", test_runtime_serial_when_concurrency_one),
+        ("内联 role 模板", test_inline_role_template),
+        ("write_file 工具", test_write_file_tool),
+        ("git 白名单", test_git_tool_whitelist),
     ]
     failed = 0
     for name, fn in checks:

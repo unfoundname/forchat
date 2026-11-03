@@ -21,7 +21,7 @@ ForChat/
 │   │   ├── runtime.py          ★ Runtime：spawn / report / read_state / write_note
 │   │   └── replay.py           review（人读）/ tree / tool_calls
 │   ├── providers/              base(Protocol) · fake(离线) · deepseek(唯一用 SDK)
-│   ├── tools/                  能力工具：read / list_dir / run_python / skill
+│   ├── tools/                  能力工具：read / list_dir / run_python / write_file / git
 │   ├── skills/                 技能加载（SKILL.md）
 │   ├── mcp.py                  MCP 客户端（stdio + JSON-RPC）
 │   └── mcp_bridge.py           MCP 工具 → 工具注册表
@@ -102,7 +102,12 @@ examples/workflows/minimal/
 **轮数默认不限**：协调型 worker 跑几十上百轮是正常的，真正的闸是预算（tokens / wall_seconds）
 和整轮墙钟。需要给单个模板设上限时，在 `workflow.json` 里写 `max_rounds`。
 
-## 能力工具（read / list_dir / run_python / skill）
+## 能力工具（read / list_dir / run_python / write_file / git）
+
+- `read` / `list_dir`：读文件与目录；
+- `run_python`：执行 `skills/`、`examples/` 下的脚本；
+- `write_file`：把内容真正落盘（路径安全由 policy 统一拦）；
+- `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/…），不是裸 shell。
 
 在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
 
