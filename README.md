@@ -27,6 +27,7 @@ ForChat/
 │   └── mcp_bridge.py           MCP 工具 → 工具注册表
 ├── examples/
 │   ├── workflows/minimal/      最小 workflow 包（workflow.json + prompts/）
+│   ├── workflows/delivery/     交付示例：coder 落盘 → hook 派生 reviewer → root 用 git 核对
 │   ├── run_demo.py             端到端自检（假 provider，无需 key）
 │   ├── mcp_demo_server.py      80 行的 MCP 服务端
 │   └── smoke_mcp.py            MCP 链路自检
@@ -151,7 +152,15 @@ def upper(text: str) -> str:
 
 - 模型/网络异常只让当前 worker 失败（事件 `worker_error`），整次运行继续；
 - 工具执行抛异常 → 变成错误回执喂给模型，不中断循环；
-- 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完。
+- 预算/墙钟耗尽 → 该 worker 标记 `failed`，兄弟分支照常跑完；
+- 响应被 `max_tokens` 截断 → 记 `response_truncated`，半截工具参数不会被硬执行。
+
+provider 的两个硬参数（真模型）：
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `FORCHAT_REQUEST_TIMEOUT` | 180s | 单次请求超时；挂住会以 `worker_error` 失败，不会拖死整次运行 |
+| `FORCHAT_MAX_TOKENS` | 8192 | 单次响应上限；thinking 也吃这个额度，太小会截断工具参数 |
 
 `--inspect` 的摘要带一行合计（总 token、总耗时、各状态计数）。
 

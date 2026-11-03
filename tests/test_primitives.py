@@ -827,6 +827,21 @@ def test_git_tool_whitelist() -> None:
     assert "不在白名单" not in status, status
 
 
+def test_truncated_response_is_recorded() -> None:
+    """finish_reason=length：记 response_truncated，不把半截参数当完整调用。"""
+    workflow = WorkflowDef.load(MINIMAL)
+    chunks = [
+        {"choices": [{"delta": {"content": "写到一半"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "length"}]},
+    ]
+    runtime = Runtime(workflow, FakeProvider([chunks]), tmpdir())
+    root = runtime.start("任务")
+
+    assert runtime.log.query(type="response_truncated")
+    assert root.status == "failed"
+    assert "写到一半" in root.report.summary
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -869,6 +884,7 @@ def main() -> int:
         ("内联 role 模板", test_inline_role_template),
         ("write_file 工具", test_write_file_tool),
         ("git 白名单", test_git_tool_whitelist),
+        ("截断响应被记录", test_truncated_response_is_recorded),
     ]
     failed = 0
     for name, fn in checks:

@@ -418,6 +418,9 @@ class Runtime:
             if choice.get("finish_reason"):
                 self.log.append("round_finish", worker_id=worker.id, round=rnd,
                                 finish_reason=choice["finish_reason"])
+                if choice["finish_reason"] == "length":
+                    # 被 max_tokens 截断：工具参数可能缺尾巴，调用方应重试而不是硬执行
+                    self.log.append("response_truncated", worker_id=worker.id, round=rnd)
 
         text = "".join(content)
         if text:

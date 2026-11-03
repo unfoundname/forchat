@@ -19,12 +19,16 @@ class DeepSeekProvider:
         api_key: str | None = None,
         base_url: str = "https://api.deepseek.com",
         thinking: bool = True,
-        request_timeout: float = 600.0,
+        request_timeout: float | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
         self.base_url = base_url
         self.thinking = thinking
-        self.request_timeout = request_timeout
+        # 单次请求超时：默认 180s。600s 那种长挂会让整个运行卡死且看不出原因。
+        self.request_timeout = request_timeout or float(os.environ.get("FORCHAT_REQUEST_TIMEOUT", 180))
+        # 单次响应的 token 上限：thinking 也算在内，太小会截断工具参数，所以给足 8k。
+        self.max_tokens = max_tokens or int(os.environ.get("FORCHAT_MAX_TOKENS", 8192))
         self._client: Any = None
 
     def _client_or_raise(self) -> Any:
@@ -47,6 +51,7 @@ class DeepSeekProvider:
             "model": model if model not in ("", "fake") else DEFAULT_MODEL,
             "messages": messages,
             "stream": True,
+            "max_tokens": self.max_tokens,
             # 让服务端在最后一帧带 usage，否则预算只能靠字符数估算
             "stream_options": {"include_usage": True},
         }
