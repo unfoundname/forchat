@@ -12,7 +12,9 @@ from typing import Any
 from . import hooks
 from .types import Budget
 
-BUILTIN_TOOLS = {"spawn", "report", "read_state", "write_note"}
+BUILTIN_TOOLS = {
+    "spawn", "report", "read_state", "write_note", "write_artifact", "read_worker_report",
+}
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {"max_concurrent", "max_depth", "max_workers", "max_wall_seconds"}
 _WORKER_KEYS = {"role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks"}
@@ -27,7 +29,7 @@ class WorkerTemplate:
     name: str
     role: str
     can_spawn: list[str] = field(default_factory=list)
-    max_rounds: int = 3
+    max_rounds: int | None = None          # None = 不限轮数，由预算与墙钟兜底
     tools: list[str] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
     budget: Budget = field(default_factory=Budget)
@@ -173,9 +175,9 @@ class WorkflowDef:
             if bad_skills:
                 errors.append(f"worker {name} 挂载了不存在的技能：{sorted(bad_skills)}")
 
-        max_rounds = spec.get("max_rounds", 3)
-        if not isinstance(max_rounds, int) or max_rounds < 1:
-            errors.append(f"worker {name} 的 max_rounds 必须是正整数")
+        max_rounds = spec.get("max_rounds")
+        if max_rounds is not None and (not isinstance(max_rounds, int) or max_rounds < 1):
+            errors.append(f"worker {name} 的 max_rounds 必须是正整数（不写 = 不限）")
 
         try:
             budget = Budget.from_dict(spec.get("budget"))

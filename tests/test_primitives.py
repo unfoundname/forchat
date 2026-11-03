@@ -355,6 +355,55 @@ def test_on_report_hook() -> None:
     assert hooks, runtime.log.query(type="hook_action")
 
 
+def test_unlimited_rounds_by_default() -> None:
+    """不写 max_rounds = 不限轮数；模型可以连续多轮读状态，最后交报告。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    raw["workers"]["root"].pop("max_rounds", None)
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("read_state", {})]),
+                tool_chunks([("read_state", {})]),
+                tool_chunks([("read_state", {})]),
+                tool_chunks([("report", {"summary": "多轮后交付"})]),
+            ]
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    root = runtime.start("任务")
+    assert root.status == "done"
+    assert root.report.summary == "多轮后交付"
+
+
+def test_read_worker_report() -> None:
+    """父 worker 能直接读子 worker 的报告，不用翻事件流。"""
+    workflow = WorkflowDef.load(MINIMAL)
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("spawn", {"template": "coder", "task": "子任务", "wait": True})]),
+                tool_chunks([("report", {"summary": "总完成"})]),
+            ],
+            "coder": [tool_chunks([("report", {"summary": "coder 完成", "unresolved": ["x"]})])],
+            "reviewer": [tool_chunks([("report", {"summary": "审查通过"})])],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    root = runtime.start("任务")
+
+    data = json.loads(
+        runtime._tool_read_worker_report(root, workflow.workers["root"], {"worker_id": "n002-coder"})
+    )
+    assert data["summary"] == "coder 完成"
+    assert data["status"] == "done"
+    assert data["unresolved"] == ["x"]
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -375,6 +424,8 @@ def main() -> int:
         ("状态落盘与重载", test_state_persisted_and_reloaded),
         ("未调 report = 失败", test_no_report_means_failed),
         ("on_report hook", test_on_report_hook),
+        ("默认不限轮数", test_unlimited_rounds_by_default),
+        ("父 worker 读子报告", test_read_worker_report),
     ]
     failed = 0
     for name, fn in checks:

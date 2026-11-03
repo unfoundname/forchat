@@ -12,7 +12,7 @@ from .store import EventLog
 _INTERESTING = {
     "worker_created", "worker_started", "assistant_message", "tool_call", "tool_result",
     "spawn_rejected", "hook_spawn", "hook_action", "report", "worker_done",
-    "budget_exhausted", "run_finished",
+    "budget_exhausted", "run_finished", "tool_denied",
 }
 
 

@@ -78,6 +78,34 @@ TOOL_SPECS: dict[str, dict] = {
             },
         },
     },
+    "write_artifact": {
+        "type": "function",
+        "function": {
+            "name": "write_artifact",
+            "description": "把交付附件（补丁、日志片段、说明）写进本次运行目录，返回相对路径。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "附件名，例如 patch.diff"},
+                    "content": {"type": "string", "description": "附件内容"},
+                },
+                "required": ["name", "content"],
+            },
+        },
+    },
+    "read_worker_report": {
+        "type": "function",
+        "function": {
+            "name": "read_worker_report",
+            "description": "读取某个 worker 的报告与预算。长运行里回看子 worker 的细节时用它，"
+                           "不要去翻整段事件流。",
+            "parameters": {
+                "type": "object",
+                "properties": {"worker_id": {"type": "string", "description": "子 worker 的 id"}},
+                "required": ["worker_id"],
+            },
+        },
+    },
 }
 
 
@@ -91,6 +119,7 @@ class Runtime:
         max_concurrent: int | None = None,
         external_tools: dict[str, tuple[dict, Any]] | None = None,
         skill_loader: Callable[[str], str | None] | None = None,
+        guard: Callable[[str, str], str | None] | None = None,
     ) -> None:
         self.wf = workflow
         self.provider = provider
@@ -100,6 +129,8 @@ class Runtime:
         self.external = dict(external_tools or {})
         # skill 名 -> 正文；同样由装配层注入，原语层不认识 SKILL.md 的格式
         self.skill_loader = skill_loader
+        # 执行前护栏：(tool, raw_arguments) -> None 放行 / str 拒绝原因
+        self.guard = guard
         self.dir = Path(run_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.log = EventLog(self.dir)
@@ -209,12 +240,19 @@ class Runtime:
         self._run_hooks(worker, "on_start")
 
         messages = self._initial_messages(worker, tpl)
-        reason = "max_rounds"
+        reason = "stop"
         last_charge = started
         last_text = ""
         reported = False
+        rnd = 0
 
-        for rnd in range(1, tpl.max_rounds + 1):
+        # 默认不限轮数：协调型 worker 跑几十上百轮是正常的，真正的闸是预算与墙钟。
+        # 想给单个模板设上限，就在 workflow.json 里写 max_rounds。
+        while True:
+            if tpl.max_rounds is not None and rnd >= tpl.max_rounds:
+                reason = "max_rounds"
+                break
+            rnd += 1
             # 墙钟要按轮次记账，否则 wall_seconds 只有在 worker 结束后才生效
             now = time.time()
             worker.budget.charge(seconds=now - last_charge)
@@ -342,11 +380,19 @@ class Runtime:
             self.log.append("tool_rejected", worker_id=worker.id, tool=name, reason="not_in_whitelist")
             return f"错误：模板 {tpl.name} 没有授权使用工具 {name}"
 
+        if self.guard is not None:
+            reason = self.guard(name, call["arguments"] or "{}")
+            if reason:
+                self.log.append("tool_denied", worker_id=worker.id, tool=name, reason=reason)
+                return f"错误：策略拒绝执行 {name}：{reason}"
+
         handler = {
             "spawn": self._tool_spawn,
             "report": self._tool_report,
             "read_state": self._tool_read_state,
             "write_note": self._tool_write_note,
+            "write_artifact": self._tool_write_artifact,
+            "read_worker_report": self._tool_read_worker_report,
         }.get(name)
         if handler is None:
             if name not in self.external:
@@ -373,7 +419,8 @@ class Runtime:
 
         if wait:
             self._run_worker(child)          # 内联执行，不占并发槽
-            return f"子 worker {child.id} 已完成，status={child.status}"
+            summary = (child.report.summary if child.report else "")[:400]
+            return f"子 worker {child.id} 已完成，status={child.status}；report: {summary}"
         self.scheduler.submit(self._run_worker, child)
         return f"子 worker {child.id} 已在后台启动"
 
@@ -403,6 +450,25 @@ class Runtime:
         self.state[key] = args.get("value")
         self._save_state()
         return "已写入"
+
+    def _tool_write_artifact(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        name = str(args.get("name") or "").strip()
+        if not name:
+            return "错误：write_artifact 需要 name"
+        path = self.log.artifact(f"{worker.id}-{name}", str(args.get("content", "")))
+        return f"附件已写入 {path}"
+
+    def _tool_read_worker_report(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        target_id = str(args.get("worker_id") or "")
+        target = self.workers.get(target_id)
+        if target is None:
+            return f"错误：没有 worker {target_id}"
+        if target.report is None:
+            return f"worker {target_id} 还没有报告（status={target.status}）"
+        data = target.report.to_dict()
+        data["status"] = target.status
+        data["template"] = target.template
+        return json.dumps(data, ensure_ascii=False)
 
     # ------------------------------------------------------------------ hooks
     def _run_hooks(self, worker: WorkerInstance, when: str) -> None:
