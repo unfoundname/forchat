@@ -507,6 +507,8 @@ python -m forchat --serve 8000
 | `GET /runs/<id>/events` | **SSE**：从第 0 条推送事件，运行结束发 `[DONE]` |
 | `GET /metrics` | Prometheus 文本：运行数/在跑数/worker 数/tokens/成本/卡死 worker（带 `FORCHAT_METRICS_TTL` 缓存，默认 5s） |
 | `POST /runs/<id>/stop` | 请求停止该运行里所有在跑的 worker（协作式） |
+| `POST /runs/<id>/workers/<wid>/stop` | 宿主强停单个 worker（下一个分片/轮次边界退出，记 killed） |
+| `POST /runs/<id>/workers/<wid>/replace` | 停掉跑偏/过长的 worker，用 `{"task": "新任务"}` 换任务重开一个新实例 |
 
 鉴权与限流：
 

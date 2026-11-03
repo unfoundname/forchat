@@ -26,7 +26,7 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 | 记录 | append-only 事件流（跨进程文件锁、分段、关键事件 fsync）、`Replay.review/tree/summary/graph`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
 | 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、worker 级 `retries`、截断检测、预算记账、续跑、中断 worker 可见、追加式快照续跑、心跳/stuck 检测 |
-| 服务 | HTTP/SSE（`--serve`）：启动运行、查状态、订阅事件流、Bearer token、限流、停止；`/metrics` Prometheus 文本（TTL 缓存） |
+| 服务 | HTTP/SSE（`--serve`）：启动运行、查状态、订阅事件流、Bearer token、限流、停止；单 worker 强停/换任务重开；`/metrics` Prometheus 文本（TTL 缓存） |
 | 运维 | `--prune` 按最近 N 次/最老 N 天清理运行目录（默认 dry-run）；事件流分段滚动 + 关键事件 fsync |
 | 计费 | `pricing.json` 价目表 → `report.cost_usd` / `--inspect` 成本行；缺价目显示未知 |
 
@@ -51,7 +51,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 98 条用例（CI 用这个）
+pytest -q                    # 99 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -64,7 +64,7 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_tools.py`：15 条（registry/provider/重试/成本/read/edit/grep/glob）
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
 - `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
-- `tests/test_server.py`：9 条（HTTP / SSE 分段 / metrics 缓存/卡死计数 / 鉴权 / 限流 / 停止 / 成本）
+- `tests/test_server.py`：10 条（HTTP / SSE 分段 / metrics 缓存/卡死计数 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
 - `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

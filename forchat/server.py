@@ -104,6 +104,19 @@ class RunManager:
             return runtime.stop_all()
         return 0 if (self.runs_root / run_id).is_dir() else None
 
+    def stop_worker(self, run_id: str, worker_id: str) -> bool | None:
+        runtime = self._runtimes.get(run_id)
+        if runtime is None:
+            return None
+        return runtime.force_stop(worker_id)
+
+    def replace_worker(self, run_id: str, worker_id: str, task: str | None) -> str | None:
+        runtime = self._runtimes.get(run_id)
+        if runtime is None:
+            return None
+        child = runtime.replace_worker(worker_id, task)
+        return child.id if child is not None else ""
+
     def allow(self, client_ip: str) -> bool:
         """极简限流：每 IP 每分钟 N 次（0 = 关闭）。"""
         if self.rate_limit_per_min <= 0:
@@ -266,6 +279,35 @@ def _make_handler(manager: RunManager) -> type[BaseHTTPRequestHandler]:
             if self._deny():
                 return
             path = urlparse(self.path).path.rstrip("/")
+            if path.startswith("/runs/") and "/workers/" in path:
+                parts = path.strip("/").split("/")
+                # /runs/<id>/workers/<wid>/stop|replace
+                if len(parts) == 5 and parts[2] == "workers" and parts[4] in ("stop", "replace"):
+                    run_id, worker_id, action = parts[1], parts[3], parts[4]
+                    if action == "stop":
+                        result = manager.stop_worker(run_id, worker_id)
+                        if result is None:
+                            self._json(404, {"error": "run not live"})
+                        elif not result:
+                            self._json(409, {"error": "worker 已结束或不存在"})
+                        else:
+                            self._json(200, {"id": run_id, "worker_id": worker_id,
+                                             "stopped": True})
+                        return
+                    length = int(self.headers.get("Content-Length", "0"))
+                    try:
+                        payload = json.loads(self.rfile.read(length) or b"{}")
+                    except json.JSONDecodeError:
+                        payload = {}
+                    new_id = manager.replace_worker(run_id, worker_id,
+                                                    str(payload.get("task") or "") or None)
+                    if new_id is None:
+                        self._json(404, {"error": "run not live"})
+                    elif not new_id:
+                        self._json(409, {"error": "replace 被资源限制拒绝"})
+                    else:
+                        self._json(200, {"old": worker_id, "new": new_id})
+                    return
             if path.startswith("/runs/") and path.endswith("/stop"):
                 run_id = path.split("/")[2]
                 stopped = manager.stop(run_id)

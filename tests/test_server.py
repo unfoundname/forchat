@@ -276,6 +276,44 @@ def test_metrics_cached() -> None:
     assert manager._metrics_cache[0] >= 0
 
 
+def test_worker_force_stop_and_replace() -> None:
+    """宿主侧干预：强停一个 worker；换任务重开一个新实例。"""
+    base = tmpdir()
+    long_chunks = [{"choices": [{"delta": {"content": "x"}}]} for _ in range(400)]
+    long_chunks.append({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+    manager = RunManager(
+        runs_root=base / ".runs",
+        workflows_root=ROOT / "examples" / "workflows",
+        provider_factory=lambda: FakeProvider(
+            TemplateResponder({"root": [long_chunks, long_chunks]}), delay=0.02
+        ),
+        rate_limit_per_min=0,
+    )
+    started = manager.start("minimal", "长任务")
+    time.sleep(0.2)
+    runtime = manager._runtimes.get(started["id"])
+    assert runtime is not None
+    assert runtime.workers["n001-root"].status == "running"
+
+    new_worker = runtime.replace_worker("n001-root", "新任务")
+    assert new_worker is not None
+    assert new_worker.id == "n002-root", new_worker.id
+    assert runtime.workers["n002-root"].task == "新任务"
+    assert runtime.log.query(type="worker_replaced")
+
+    assert runtime.force_stop("n002-root") is True
+    # n001-root 已经被 replace 停掉了，不再重复断言
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if all(runtime.workers[wid].status != "running"
+               for wid in ("n001-root", "n002-root")):
+            break
+        time.sleep(0.05)
+    assert runtime.workers["n001-root"].status in ("killed", "failed")
+    assert runtime.workers["n002-root"].status in ("killed", "failed")
+    manager.stop(started["id"])
+
+
 def main() -> int:
     checks = [
         ("manager 启停与状态", test_manager_start_and_status),
@@ -286,6 +324,7 @@ def main() -> int:
         ("运行结束释放内存", test_runtimes_are_released_after_run),
         ("服务端加载价目表", test_local_pricing_applied),
         ("metrics 有缓存", test_metrics_cached),
+        ("worker 强停与替换", test_worker_force_stop_and_replace),
         ("SSE 读取滚动分段", test_sse_reads_rotated_segments),
     ]
     return run("HTTP/SSE 自检", checks)

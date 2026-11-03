@@ -108,6 +108,46 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
                     self.max_total_cost_usd
                 ):
                     self._budget_tripped = True
+
+    # ------------------------------------------------------------------ 宿主侧干预
+    def force_stop(self, worker_id: str) -> bool:
+        """宿主强制叫停一个 worker：置取消位 + 取消未启动的 future。
+
+        线程仍在网络请求里时无法硬杀（Python 线程不可终止），但请求超时会兜住；
+        这里保证 worker 在下一个分片/轮次边界退出并记 killed。
+        """
+        worker = self.workers.get(worker_id)
+        if worker is None or worker.status in ("done", "failed", "killed", "interrupted"):
+            return False
+        event = self._stop_events.setdefault(worker_id, threading.Event())
+        event.set()
+        future = self._futures.get(worker_id)
+        if future is not None:
+            future.cancel()
+        self.log.append("worker_force_stopped", worker_id=worker_id)
+        return True
+
+    def replace_worker(self, worker_id: str, task: str | None = None) -> WorkerInstance | None:
+        """宿主把跑偏/过长的 worker 停掉，用同一模板/范围换一个新任务重开（新实例）。"""
+        old = self.workers.get(worker_id)
+        if old is None:
+            return None
+        self.force_stop(worker_id)
+        child = self._create_worker(
+            old.template,
+            task or old.task,
+            parent=self.workers.get(old.parent_id) if old.parent_id else None,
+            depth=old.depth,
+            scope=old.scope or None,
+        )
+        if child is None:
+            return None
+        child.facts_owner = old.facts_owner or old.id
+        self.log.append("worker_replaced", old=worker_id, new=child.id,
+                        task=(task or old.task)[:120])
+        self._submit(child)
+        return child
+
     def start(self, task: str, template: str | None = None) -> WorkerInstance | None:
         self.run_deadline = time.time() + self.max_wall_seconds
         root = self._create_worker(template or self.wf.entry, task, parent=None, depth=0)
