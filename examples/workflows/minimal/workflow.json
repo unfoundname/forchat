@@ -24,7 +24,7 @@
         "read_worker_report"
       ],
       "budget": {
-        "tokens": 20000,
+        "tokens": 500000,
         "wall_seconds": 600
       },
       "hooks": {

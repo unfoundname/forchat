@@ -354,6 +354,40 @@ def test_context_trimmed_for_long_sessions() -> None:
     assert max(len(seen) for seen in provider.seen) <= 12
 
 
+def test_thinking_logging_is_opt_in() -> None:
+    """thinking 默认不落事件（1B token 级运行会把事件流写爆），要开才记。"""
+    import os
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    chunks = [
+        {"choices": [{"delta": {"reasoning_content": "想一下"}}]},
+        *tool_chunks([("report", {"summary": "ok"})]),
+    ]
+
+    def run_once() -> Runtime:
+        provider = FakeProvider(TemplateResponder({"root": [chunks]}))
+        runtime = Runtime(workflow, provider, tmpdir())
+        runtime.start("任务")
+        return runtime
+
+    assert not run_once().log.query(type="thinking_delta")
+
+    old = os.environ.get("FORCHAT_LOG_THINKING")
+    os.environ["FORCHAT_LOG_THINKING"] = "1"
+    try:
+        assert run_once().log.query(type="thinking_delta")
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_LOG_THINKING", None)
+        else:
+            os.environ["FORCHAT_LOG_THINKING"] = old
+
+
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),
@@ -369,6 +403,8 @@ def main() -> int:
         ("父 worker 读子报告", test_read_worker_report),
         ("调度器并发上限", test_scheduler_concurrency_limit),
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
+        ("长会话上下文裁剪", test_context_trimmed_for_long_sessions),
+        ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
     ]
     return run("原语流程自检", checks)
 

@@ -23,7 +23,7 @@
         "glob"
       ],
       "budget": {
-        "tokens": 20000,
+        "tokens": 500000,
         "wall_seconds": 400
       }
     }

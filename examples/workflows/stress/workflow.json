@@ -7,7 +7,7 @@
     "max_depth": 2,
     "max_workers": 16,
     "max_wall_seconds": 3000,
-    "max_total_tokens": 600000
+    "max_total_tokens": 15000000
   },
   "workers": {
     "root": {
@@ -30,7 +30,7 @@
         "glob"
       ],
       "budget": {
-        "tokens": 120000,
+        "tokens": 3000000,
         "wall_seconds": 1800
       }
     },
@@ -49,7 +49,7 @@
         "glob"
       ],
       "budget": {
-        "tokens": 40000,
+        "tokens": 1000000,
         "wall_seconds": 600
       }
     }

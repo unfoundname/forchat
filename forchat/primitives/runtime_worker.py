@@ -227,7 +227,8 @@ class WorkerMixin:
 
             if delta.get("content"):
                 content.append(delta["content"])
-            if delta.get("reasoning_content"):
+            if delta.get("reasoning_content") and os.environ.get("FORCHAT_LOG_THINKING") == "1":
+                # 默认不逐条落 thinking：1B token 级运行会把事件流写爆
                 self.log.append("thinking_delta", worker_id=worker.id,
                                 text=delta["reasoning_content"])
 

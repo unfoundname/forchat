@@ -19,8 +19,8 @@ class Budget:
     没配时 cost 字段为 None，报告里明确显示"未知"，不假装是 0。
     """
 
-    tokens: int = 200_000
-    wall_seconds: float = 1800.0
+    tokens: int = 20_000_000
+    wall_seconds: float = 14400.0
     max_cost_usd: float | None = None
     spent_tokens: int = 0
     spent_seconds: float = 0.0

@@ -28,7 +28,7 @@
         "glob"
       ],
       "budget": {
-        "tokens": 30000,
+        "tokens": 750000,
         "wall_seconds": 600
       }
     },
@@ -55,7 +55,7 @@
         ]
       },
       "budget": {
-        "tokens": 30000,
+        "tokens": 750000,
         "wall_seconds": 600
       }
     },

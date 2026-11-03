@@ -209,6 +209,29 @@ worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，�
 就保留 `system + 原始任务 + 最近轮次`，裁掉中间历史，并记 `context_trimmed` 事件。
 "跑上百轮"的前提是这条裁剪真的在跑，否则几十轮后必然撞上下文上限。
 
+## 规模与预算
+
+默认值按"真实项目"给，不按 demo 给：
+
+| 闸 | 默认 | 说明 |
+|---|---|---|
+| 单 worker tokens | **20M** | 模板里写 `budget.tokens` 覆盖 |
+| 单 worker 墙钟 | **4 小时** | `budget.wall_seconds` |
+| 整轮 tokens | **1B** | `limits.max_total_tokens` |
+| 整轮墙钟 | **7 天** | `limits.max_wall_seconds` / `max_total_seconds` |
+| 并发 / worker 数 / 深度 | 2 / 16 / 3 | 按机器与项目调 |
+
+做 5B~10B token 的重型项目：在 `workflow.json` 里显式写
+`limits.max_total_tokens`、`limits.max_wall_seconds`，并给每个模板写 `budget.tokens`。
+预算只是上限，不花完不扣费。
+
+**预算和上下文是两件事**：预算累计的是"每轮 prompt + completion 的总和"；单次请求的上下文大小
+由 `FORCHAT_CONTEXT_MESSAGES` / `FORCHAT_CONTEXT_CHARS` 控制（超限裁剪）。1B 级运行还要注意：
+
+- `thinking` 默认**不**逐条落事件，需要时设 `FORCHAT_LOG_THINKING=1`；
+- 事件流按 `FORCHAT_EVENT_LOG_MB`（默认 32MB）分段，关键事件 fsync；
+- `--prune` 定期清理旧运行目录。
+
 ## 技能
 
 `skills/<名字>/SKILL.md`，frontmatter 只有 `name` / `description`，正文是完整指令。

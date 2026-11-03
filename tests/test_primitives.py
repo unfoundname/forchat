@@ -26,6 +26,9 @@ def test_budget() -> None:
     budget.charge(tokens=2)
     assert budget.exhausted()
     assert budget.snapshot()["tokens"] == [11, 10]
+    # 默认预算要按"真实项目"量级，不是 200k
+    assert Budget().tokens == 20_000_000
+    assert Budget().wall_seconds == 14400.0
 
 
 def test_eventlog() -> None:

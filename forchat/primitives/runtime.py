@@ -59,10 +59,10 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         self.max_workers = int(workflow.limits.get("max_workers", 16))
         # 整次运行的总闸：per-worker 预算管单个节点，这里管整棵树
         self.max_wall_seconds = min(
-            float(workflow.limits.get("max_wall_seconds", 3600)),
-            float(workflow.limits.get("max_total_seconds", 3600)),
+            float(workflow.limits.get("max_wall_seconds", 604800)),
+            float(workflow.limits.get("max_total_seconds", 604800)),
         )
-        self.max_total_tokens = int(workflow.limits.get("max_total_tokens", 1_000_000))
+        self.max_total_tokens = int(workflow.limits.get("max_total_tokens", 1_000_000_000))
         self.max_total_cost_usd = workflow.limits.get("max_total_cost_usd")
         self.total_tokens = 0
         self.total_cost_usd = 0.0
