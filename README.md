@@ -9,7 +9,9 @@
 ForChat/
 ├── AGENTS.md                   给 agent 的工作规则（四条硬规则）
 ├── CONTEXT.md                  领域词汇表：三层、worker、fence、report…
-├── docs/decisions/             ADR
+├── docs/
+│   ├── decisions/              ADR
+│   └── sandbox.md              部署层隔离清单（容器/挂载/网络/cgroup/secrets）
 ├── forchat/
 │   ├── __main__.py             CLI：只装配，不执行
 │   ├── primitives/             ★ 原语层（唯一执行循环在这里）
@@ -182,7 +184,8 @@ def upper(text: str) -> str:
 
 ## 安全护栏（不是沙箱）
 
-`forchat/policy.py` 在工具执行前做**参数级**检查，CLI 默认启用：
+`forchat/policy.py` 在工具执行前做**参数级**检查，CLI 默认启用（完整威胁模型与部署隔离清单见
+[docs/sandbox.md](docs/sandbox.md)）：
 
 - 路径跑出项目根（`../` 逃逸、绝对路径指向别处）→ 拒绝；
 - `.env` / `.git` / 私钥 / 证书后缀 → 拒绝；
@@ -222,7 +225,8 @@ provider 的两个硬参数（真模型）：
 | `FORCHAT_REQUEST_TIMEOUT` | 180s | 单次请求超时；挂住会以 `worker_error` 失败，不会拖死整次运行 |
 | `FORCHAT_MAX_TOKENS` | 8192 | 单次响应上限；thinking 也吃这个额度，太小会截断工具参数 |
 
-`--inspect` 的摘要带一行合计（总 token、总耗时、各状态计数）。
+`--inspect` 的摘要带一行合计（总 token、总耗时、各状态计数）；有护栏事件时还会多一行
+`护栏: tool_denied=… spawn_rejected=… worker_error=…`，长运行先看这行判断是不是"一直在撞墙"。
 
 ## worktree 并行（示例）
 

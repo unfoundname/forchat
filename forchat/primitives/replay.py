@@ -79,6 +79,12 @@ class Replay:
             f"seconds={total_seconds:.1f} {detail}".rstrip()
         )
 
+        denied = len(self.log.query(type="tool_denied"))
+        rejected = len(self.log.query(type="spawn_rejected"))
+        errored = len(self.log.query(type="worker_error"))
+        if denied or rejected or errored:
+            lines.append(f"护栏: tool_denied={denied} spawn_rejected={rejected} worker_error={errored}")
+
         finished = self.log.query(type="run_finished")
         if finished:
             event = finished[-1]

@@ -175,6 +175,11 @@ def test_runtime_guard_blocks_tool() -> None:
     assert denied and "测试拒绝" in denied[0]["reason"]
     assert root.status == "done"
 
+    from forchat.primitives import Replay
+
+    summary = Replay(runtime.log).summary()
+    assert "护栏:" in summary and "tool_denied=1" in summary, summary
+
 
 def test_deepseek_provider_maps_chunks() -> None:
     """真 provider 的映射：chunk -> dict、usage 开关、tools 透传。"""
