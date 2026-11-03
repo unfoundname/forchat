@@ -51,19 +51,19 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 92 条用例（CI 用这个）
+pytest -q                    # 93 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
 - `tests/test_primitives.py`：11 条（预算/配置校验）
 - `tests/test_primitives_flows.py`：13 条（派生/hook/并发）
 - `tests/test_primitives_lifecycle.py`：3 条（restart/每 worker 事实）
-- `tests/test_primitives_resources.py`：5 条（上下文裁剪/资源感知/排队）
+- `tests/test_primitives_resources.py`：6 条（compact/资源感知/排队）
 - `tests/test_primitives_state.py`：11 条（状态/续跑/自动恢复/运行图）
 - `tests/test_primitives_guards.py`：8 条（scope/停止/快照/重试）
 - `tests/test_tools.py`：15 条（registry/provider/重试/成本/read/edit/grep/glob）
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
-- `tests/test_cli.py`：6 条（--check / --inspect / --runs / --prune）
+- `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
 - `tests/test_server.py`：8 条（HTTP / SSE 分段 / metrics / 鉴权 / 限流 / 停止 / 成本）
 - `tests/test_subproc.py`：3 条（超时 / 脱敏环境 / 内存上限）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行

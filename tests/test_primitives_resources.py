@@ -171,9 +171,62 @@ def test_queued_state_visible() -> None:
     assert all("pending" in event for event in queued)
     assert all(event.get("max_concurrent") == 1 for event in queued)
 
+def test_compact_uses_llm_summary_when_available() -> None:
+    """compact 默认走 LLM 摘要；摘要器失败时退回确定性摘要。"""
+    import os
+
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["read_state", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    turns = [tool_chunks([("read_state", {})]) for _ in range(20)]
+    turns.append(tool_chunks([("report", {"summary": "ok"})]))
+    old = os.environ.get("FORCHAT_CONTEXT_MESSAGES")
+    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "10"
+    try:
+        runtime = Runtime(
+            workflow,
+            FakeProvider(TemplateResponder({"root": turns})),
+            tmpdir(),
+            compact_summarizer=lambda dropped: "总结：查过 read_state，无未决事项",
+        )
+        runtime.start("任务")
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_CONTEXT_MESSAGES", None)
+        else:
+            os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
+
+    compacted = runtime.log.query(type="context_compacted")
+    assert compacted
+    assert compacted[0]["summary_source"] == "llm"
+
+    turns2 = [tool_chunks([("read_state", {})]) for _ in range(20)]
+    turns2.append(tool_chunks([("report", {"summary": "ok"})]))
+    os.environ["FORCHAT_CONTEXT_MESSAGES"] = "10"
+    try:
+        fallback = Runtime(
+            workflow,
+            FakeProvider(TemplateResponder({"root": turns2})),
+            tmpdir(),
+            compact_summarizer=lambda dropped: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        fallback.start("任务")
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_CONTEXT_MESSAGES", None)
+        else:
+            os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
+
+    assert fallback.log.query(type="context_compacted")[0]["summary_source"] == "digest"
+
+
 def main() -> int:
     checks = [
-        ("长会话上下文裁剪", test_context_trimmed_for_long_sessions),
+        ("长会话 compact 归档", test_context_trimmed_for_long_sessions),
+        ("compact 优先 LLM 摘要", test_compact_uses_llm_summary_when_available),
         ("thinking 日志默认关闭", test_thinking_logging_is_opt_in),
         ("资源余量可见", test_resources_visible_to_worker),
         ("预算低时裁剪收紧", test_context_trim_tightens_when_budget_low),

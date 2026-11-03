@@ -41,3 +41,50 @@ def prune(
         if not dry_run:
             shutil.rmtree(path, ignore_errors=True)
     return victims, freed
+
+
+def plan_compacted_cleanup(
+    runs_root: Path, keep_latest: int = 3, older_than_days: float | None = None
+) -> list[Path]:
+    """compact 归档的清理计划：每个 worker 只留最近 keep_latest 份。
+
+    给前端"归档管理"面板用：先拿计划，再由用户确认执行。
+    """
+    if not runs_root.is_dir():
+        return []
+    victims: list[Path] = []
+    for folder in runs_root.glob("*/compacted"):
+        groups: dict[str, list[Path]] = {}
+        for path in sorted(folder.glob("*.json")):
+            key = path.name.rsplit("-", 2)[0]     # n002-coder-001.json -> n002-coder
+            groups.setdefault(key, []).append(path)
+        for files in groups.values():
+            if keep_latest > 0:
+                victims.extend(files[:-keep_latest])
+            else:
+                victims.extend(files)
+    if older_than_days is not None:
+        cutoff = time.time() - older_than_days * 86400
+        victims.extend(
+            p for p in runs_root.glob("*/compacted/*.json") if p.stat().st_mtime < cutoff
+        )
+    return sorted(set(victims))
+
+
+def cleanup_compacted(
+    runs_root: Path,
+    keep_latest: int = 3,
+    older_than_days: float | None = None,
+    dry_run: bool = True,
+) -> tuple[list[Path], int]:
+    """删除计划中的 compact 归档，返回 (被删列表, 释放字节数)。"""
+    victims = plan_compacted_cleanup(runs_root, keep_latest, older_than_days)
+    freed = 0
+    for path in victims:
+        try:
+            freed += path.stat().st_size
+        except OSError:
+            continue
+        if not dry_run:
+            path.unlink(missing_ok=True)
+    return victims, freed

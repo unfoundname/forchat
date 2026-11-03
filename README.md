@@ -219,11 +219,18 @@ worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，�
 就保留 `system + 原始任务 + 最近轮次`，**把中间历史 compact 掉**：
 
 1. 被裁掉的整段对话**归档**到 `compacted/<worker>-<序号>.json`（不丢，可查）；
-2. 在对话里插入一段**确定性摘要**（谁说了什么、调过哪些工具名，前 1000 字符）；
-3. 记 `context_compacted` 事件（含归档路径；`--inspect` 能看到这一行）。
+2. 在对话里插入一段**摘要**：默认调用模型总结（保留已确认事实/决策/未完成事项），
+   模型调用失败或 `FORCHAT_COMPACT_LLM=0` 时退回确定性摘要（谁说了什么、调过哪些工具）；
+3. 最近对话保留 `FORCHAT_RECENT_MESSAGES` 条（默认 20，至少 4 条）；
+4. 记 `context_compacted` 事件（`summary_source=llm|digest`、归档路径；`--inspect` 能看到）。
 
-不是调模型做总结——那是额外一次请求，成本和时延都不可控；现在的做法是"可复现的摘要 + 全文归档"，
-需要细节时还能 `read`/`grep`/读归档，事实（facts）则完全不受 compact 影响。
+摘要本身也计入该 worker 的 token 预算。归档暂时不自动清理，但清理 API 已经备好，给以后前端用：
+
+```python
+from forchat.runs import plan_compacted_cleanup, cleanup_compacted
+plan_compacted_cleanup(runs_root, keep_latest=3)        # 只看计划
+cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
+```
 
 ## 规模与预算
 

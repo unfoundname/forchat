@@ -39,10 +39,13 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, WorkerMixin):
         guard: Callable[[str, str], str | None] | None = None,
         pricing: Any | None = None,
         facts_dir: Path | str | None = None,
+        compact_summarizer: Callable[[list[dict]], str] | None = None,
     ) -> None:
         self.wf = workflow
         self.provider = provider
         self.model = model
+        # compact 摘要器：默认用 provider 自己调一次模型；测试/宿主可注入替换
+        self.compact_summarizer = compact_summarizer
         # 每个 worker 一份事实文件；默认落在 run 目录，可用 FORCHAT_FACTS_DIR 指到长期存储
         self.facts_dir = Path(facts_dir) if facts_dir else (Path(run_dir) / "facts")
         # name -> (openai spec, caller(raw_arguments_json))

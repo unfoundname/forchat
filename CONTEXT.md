@@ -29,8 +29,8 @@
   超过 `FORCHAT_EVENT_LOG_MB` 自动分段（`events.<n>.jsonl`），关键事件 fsync。
 - **重试**：provider 层只重试"首片之前"的瞬时错误；worker 层用模板 `retries` 兜基础设施抖动，业务失败不重试。
 - **快照（snapshot）**：每轮把 worker 的 `messages`/轮次写到 `workers/<id>.json`；`--resume-worker` 用它从断点继续（同一 run 目录、事件追加）。
-- **compact**：每轮请求前超限就保留 system+任务+最近轮次；被裁的整段对话归档到 `compacted/<worker>-NNN.json`，对话里插入确定性摘要，记 `context_compacted` 事件。
-- **保留策略**：`--prune` 按"最近 N 次 / 最老 N 天"清理 `.runs/`，默认 dry-run。
+- **compact**：超限时保留 system+任务+最近 N 条；被裁对话归档到 `compacted/<worker>-NNN.json`，默认用模型生成摘要（失败退回确定性摘要），记 `context_compacted`（summary_source=llm|digest）。
+- **保留策略**：`--prune` 按"最近 N 次 / 最老 N 天"清理 `.runs/`，默认 dry-run；`cleanup_compacted()` 清理 compact 归档（同样默认 dry-run）。
 - **状态**：`pending / queued / running / done / failed / killed / interrupted`。
 - **Replay**：只读重建一次运行——`review()` 流水账、`tree()` 派生树、`summary()` 每个 worker 的消耗与摘要。
 - **续跑（resume）**：同一 run 目录再次运行。历史 worker 只读、序号接着涨，根 worker 的系统提示里带历史摘要。

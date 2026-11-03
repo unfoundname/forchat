@@ -126,6 +126,27 @@ def test_prune_dry_run_then_delete() -> None:
     assert len(list(base.iterdir())) == 1
 
 
+def test_compacted_cleanup_plan() -> None:
+    """compact 归档清理：默认 dry-run，按 worker 保留最近 N 份。"""
+    from forchat.runs import cleanup_compacted, plan_compacted_cleanup
+
+    base = tmpdir()
+    run_dir = base / "run-a" / "compacted"
+    run_dir.mkdir(parents=True)
+    for index in (1, 2, 3):
+        (run_dir / f"n002-coder-{index:03d}.json").write_text("{}", encoding="utf-8")
+
+    planned = plan_compacted_cleanup(base, keep_latest=1)
+    assert len(planned) == 2, planned
+
+    victims, freed = cleanup_compacted(base, keep_latest=1, dry_run=True)
+    assert len(victims) == 2 and freed > 0
+    assert all(path.is_file() for path in victims)
+
+    cleanup_compacted(base, keep_latest=1, dry_run=False)
+    assert len(list(run_dir.iterdir())) == 1
+
+
 def main() -> int:
     checks = [
         ("--check 进程级退出码", test_check_cli_exit_codes),
@@ -134,6 +155,7 @@ def main() -> int:
         ("--runs 列出历史", test_runs_lists_history),
         ("--runs 缺失目录", test_runs_missing_dir),
         ("--prune 计划与删除", test_prune_dry_run_then_delete),
+        ("compact 归档清理计划", test_compacted_cleanup_plan),
     ]
     return run("CLI 自检", checks)
 
