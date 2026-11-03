@@ -5,10 +5,11 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
-from ..env_scrub import clean_environ
+from .. import subproc
 from ..registry import tool
 
 ALLOWED = {
@@ -38,18 +39,10 @@ def git(args: str, cwd: str = "") -> str:
         return f"错误：目录不存在 {work_dir}"
 
     try:
-        proc = subprocess.run(
-            ["git", *parts],
-            cwd=work_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=TIMEOUT,
-            env=clean_environ(),
-        )
+        timeout = float(os.environ.get("FORCHAT_GIT_TIMEOUT", TIMEOUT))
+        proc = subproc.run(["git", *parts], cwd=work_dir, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return f"错误：git {parts[0]} 超时（>{TIMEOUT}s）"
+        return f"错误：git {parts[0]} 超时（>{timeout:g}s）"
     except OSError as exc:
         return f"错误：无法执行 git：{exc}"
 

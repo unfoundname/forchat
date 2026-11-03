@@ -472,6 +472,26 @@ def test_budget_cost_fence() -> None:
     assert root.status == "failed"
 
 
+def test_run_python_timeout_env() -> None:
+    """FORCHAT_SCRIPT_TIMEOUT 生效：超时返回错误回执，不阻塞。"""
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    (work / "sleep.py").write_text("import time\ntime.sleep(5)\n", encoding="utf-8")
+    old = os.environ.get("FORCHAT_SCRIPT_TIMEOUT")
+    os.environ["FORCHAT_SCRIPT_TIMEOUT"] = "1"
+    try:
+        out = registry.execute("run_python", json.dumps({"script": "sleep.py", "cwd": str(work)}))
+    finally:
+        if old is None:
+            os.environ.pop("FORCHAT_SCRIPT_TIMEOUT", None)
+        else:
+            os.environ["FORCHAT_SCRIPT_TIMEOUT"] = old
+    assert "超时" in out, out
+
+
 def main() -> int:
     checks = [
         ("能力工具桥接：外部工具注入", test_external_tools_bridge),
@@ -493,6 +513,7 @@ def main() -> int:
         ("价目表换算", test_pricing_math_and_unknown),
         ("运行时报告含成本", test_runtime_report_includes_cost),
         ("成本预算闸", test_budget_cost_fence),
+        ("run_python 超时环境变量", test_run_python_timeout_env),
     ]
     return run("工具与安全自检", checks)
 

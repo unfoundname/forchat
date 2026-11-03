@@ -210,6 +210,9 @@ def upper(text: str) -> str:
 
 - **子进程环境擦除密钥**：`run_python` / `git` / MCP 服务端继承的环境里会去掉
   `*API_KEY*`、`*SECRET*`、`*TOKEN*` 等变量（`forchat/env_scrub.py`），避免脚本把 key 读走；
+- **受限子进程**（`forchat/subproc.py`）：超时（`FORCHAT_SCRIPT_TIMEOUT` 默认 30s /
+  `FORCHAT_GIT_TIMEOUT` 默认 60s）、内存上限（`FORCHAT_MEMORY_MB` 默认 512，Windows 用 Job Object、
+  POSIX 用 `setrlimit`）、脱敏环境；超限时进程被杀，回执里会说明；
 - **覆盖前自动备份**：`write_file` 覆盖已有文件前，把旧内容写到
   `.forchat-backups/<相对路径>`，写错至少能捞回来。
 
