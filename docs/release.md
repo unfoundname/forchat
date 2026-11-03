@@ -21,8 +21,8 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 |---|---|
 | 执行 | `spawn`（含 `paths` 授权）、`restart`（worker 自重启：同实例、清空对话、事实保留）、`wait_workers`、`stop_worker`（协作式）、hook（action/spawn）、`report` 完成信号、长会话上下文裁剪 |
 | 预算 | 单 worker tokens/墙钟/成本、整轮 `max_total_tokens/max_total_seconds/max_total_cost_usd`、深度/worker 数/并发上限；**预算只记账不中断**（超了继续跑，整轮超了只拦新派生） |
-| 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（子命令白名单）+ MCP 工具 |
-| 记忆 | 每 worker 一份事实库：`write_fact` / `read_facts`，落盘 `facts/<worker>.json`（可用 `FORCHAT_FACTS_DIR` 指到长期目录）；restart 沿用、新 agent 系统提示自动带 |
+| 能力工具 | `read(offset/limit)` `list_dir` `grep` `glob` `edit_file` `write_file`（覆盖前备份）`run_python(cwd)` `git`（环境变量白名单）`web_fetch`（SSRF 防护）`run_checks`（机器可判验收）+ MCP 工具 |
+| 记忆 | 契约冻结（`write_contract` 写一次不可改，注入所有 agent、compact 不丢）；每 worker 一份事实库：`write_fact` / `read_facts`，落盘 `facts/<worker>.json`（可用 `FORCHAT_FACTS_DIR` 指到长期目录）；restart 沿用、新 agent 系统提示自动带 |
 | 记录 | append-only 事件流（跨进程文件锁、分段、关键事件 fsync）、`Replay.review/tree/summary/graph`、`--runs` / `--inspect` / `--resume` |
 | 安全 | `Policy`（根/敏感文件/scope/git 路径）、子进程脱敏环境、`.forchat-backups/`、受限子进程（超时/内存上限） |
 | 稳定性 | 失败隔离、`RetryProvider`（首片前重试）、worker 级 `retries`、截断检测、预算记账、续跑、中断 worker 可见、追加式快照续跑、心跳/stuck 检测 |
@@ -51,17 +51,17 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q                    # 99 条用例（CI 用这个）
+pytest -q                    # 103 条用例（CI 用这个）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
 - `tests/test_primitives.py`：12 条（预算/配置校验/跨进程事件流）
-- `tests/test_primitives_flows.py`：13 条（派生/hook/并发）
+- `tests/test_primitives_flows.py`：14 条（派生/hook/并发/契约冻结）
 - `tests/test_primitives_lifecycle.py`：3 条（restart/每 worker 事实）
 - `tests/test_primitives_resources.py`：9 条（compact/保留配置/资源感知/排队/心跳）
 - `tests/test_primitives_state.py`：11 条（状态/续跑/自动恢复/运行图）
 - `tests/test_primitives_guards.py`：8 条（scope/停止/快照/重试）
-- `tests/test_tools.py`：15 条（registry/provider/重试/成本/read/edit/grep/glob）
+- `tests/test_tools.py`：18 条（registry/provider/重试/成本/read/edit/grep/glob/web_fetch/run_checks）
 - `tests/test_policy.py`：8 条（policy/scope/脱敏/备份）
 - `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
 - `tests/test_server.py`：10 条（HTTP / SSE 分段 / metrics 缓存/卡死计数 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）

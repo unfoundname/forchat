@@ -174,7 +174,7 @@ examples/workflows/minimal/
 
 `run_finished` 事件里会记 `total_tokens` 与 `budget_limit`，`--inspect` 能看到。
 
-运行时只给模型十二个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
+运行时只给模型十三个工具：`spawn`（派子 worker，受 can_spawn/深度/worker 数约束）、`report`（完成信号）、
 `read_state` / `write_note`（plan 与笔记，落盘不靠记忆）、`write_artifact`（交付附件）、
 `read_worker_report`（父 worker 回看子报告）、`wait_workers`（汇合 `spawn(wait=false)` 的异步分支）、
 `stop_worker`（协作式叫停：下一分片/下一轮边界退出，状态记为 `killed`）、
@@ -185,19 +185,25 @@ examples/workflows/minimal/
 **事实库**是"重启也不丢"的那一层：`write_fact("构建命令", "pytest -q")` 之后，`restart`/`--resume` 出的
 agent 在系统提示里都能看到它，不必靠对话记忆。
 
+**契约冻结**：`write_contract("GET /api/videos", "返回 {items:[...]}")` 之后，这条接口约定会注入**所有**
+agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许改，要改必须 `replace=true`（记版本号）。
+长程跨模块集成时用它防"摘要丢细节 → 接口漂移"。
+
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 
 **轮数默认不限**：协调型 worker 跑几十上百轮是正常的，真正的闸是预算（tokens / wall_seconds）
 和整轮墙钟。需要给单个模板设上限时，在 `workflow.json` 里写 `max_rounds`。
 
-## 能力工具（read / grep / glob / edit_file / run_python / write_file / git）
+## 能力工具（read / grep / glob / edit_file / run_python / write_file / git / web_fetch / run_checks）
 
 - `read` / `list_dir`：读文件与目录；`read` 支持 `offset` / `limit`，大文件可分段读；
 - `grep` / `glob`：按正则搜内容、按模式找文件（找符号/调用点不用逐层猜路径）；
 - `edit_file`：精确替换（`old_string` 默认必须唯一），改一两行不必整文件重写；
 - `run_python`：执行脚本，支持 `cwd`（worktree 里跑测试就靠它）；
 - `write_file`：把内容真正落盘（路径安全由 policy 统一拦，覆盖前自动备份）；
-- `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell。
+- `git`：**子命令白名单**（status/diff/log/add/commit/branch/worktree/merge/…），不是裸 shell；
+- `web_fetch`：抓 URL 文本（查新 API 文档 / 线上报错 / 别人仓库页面）；默认拒绝内网地址（SSRF），限时 20s、限读 500KB；
+- `run_checks`：跑一组验收脚本（项目内 `.py`），按退出码输出 `PASS/FAIL` 汇总——**机器可判的验收**，不信报告自述。
 
 在 `forchat/tools/` 新建文件即自动注册，schema 由签名推导：
 

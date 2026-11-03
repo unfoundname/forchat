@@ -355,6 +355,78 @@ def test_grep_and_glob() -> None:
     assert "b.md" not in listing, listing
 
 
+def test_web_fetch_blocks_private_by_default() -> None:
+    from forchat import registry, tools  # noqa: F401
+
+    out = registry.execute("web_fetch", json.dumps({"url": "http://127.0.0.1:1/x"}))
+    assert "拒绝访问内网" in out, out
+
+
+def test_web_fetch_reads_local_page_when_allowed() -> None:
+    import http.server
+    import os
+    import threading
+
+    from forchat import registry, tools  # noqa: F401
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body = b"<html><body><h1>hello</h1><script>x</script>world</body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    old = os.environ.get("FORCHAT_WEB_ALLOW_PRIVATE")
+    os.environ["FORCHAT_WEB_ALLOW_PRIVATE"] = "1"
+    try:
+        out = registry.execute(
+            "web_fetch",
+            json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}/"}),
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        if old is None:
+            os.environ.pop("FORCHAT_WEB_ALLOW_PRIVATE", None)
+        else:
+            os.environ["FORCHAT_WEB_ALLOW_PRIVATE"] = old
+
+    assert "hello" in out and "world" in out, out
+    assert "<h1>" not in out, out
+
+
+def test_run_checks_pass_fail_summary() -> None:
+    import os
+
+    from forchat import registry, tools  # noqa: F401
+
+    work = tmpdir()
+    (work / "ok.py").write_text("print('ok')\n", encoding="utf-8")
+    (work / "bad.py").write_text("raise SystemExit(3)\n", encoding="utf-8")
+    old = os.getcwd()
+    os.chdir(work)
+    try:
+        out = registry.execute(
+            "run_checks",
+            json.dumps({"checks": [
+                {"name": "good", "script": "ok.py"},
+                {"name": "bad", "script": "bad.py"},
+            ]}),
+        )
+    finally:
+        os.chdir(old)
+
+    assert "验收总结果：FAIL" in out, out
+    assert "good: PASS" in out and "bad: FAIL" in out, out
+
+
 def main() -> int:
     checks = [
         ("外部工具 schema 桥接", test_external_tools_bridge),
@@ -372,6 +444,9 @@ def main() -> int:
         ("read offset/limit", test_read_supports_offset_and_limit),
         ("edit_file 唯一/全替换", test_edit_file_unique_and_replace_all),
         ("grep 与 glob", test_grep_and_glob),
+        ("web_fetch 拒绝内网", test_web_fetch_blocks_private_by_default),
+        ("web_fetch 抓页面", test_web_fetch_reads_local_page_when_allowed),
+        ("run_checks 汇总", test_run_checks_pass_fail_summary),
     ]
     return run("工具自检", checks)
 

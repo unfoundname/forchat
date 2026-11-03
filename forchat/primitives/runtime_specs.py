@@ -169,5 +169,30 @@ TOOL_SPECS: dict[str, dict] = {
             },
         },
     },
+    "write_contract": {
+        "type": "function",
+        "function": {
+            "name": "write_contract",
+            "description": "冻结一条跨模块契约（接口签名/数据格式/命令约定），写进运行状态并注入所有 agent 的提示词，"
+                           "不会被 compact 抹掉。默认写一次后不能再改，要改必须 replace=true。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "契约名，例如 'GET /api/videos 响应'"},
+                    "content": {"type": "string", "description": "契约内容（字段/类型/示例）"},
+                    "replace": {"type": "boolean", "description": "确实要改时传 true"},
+                },
+                "required": ["key", "content"],
+            },
+        },
+    },
+    "read_contracts": {
+        "type": "function",
+        "function": {
+            "name": "read_contracts",
+            "description": "读取当前所有冻结契约。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 }
 

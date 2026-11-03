@@ -55,6 +55,8 @@ class ToolsMixin:
             "restart": self._tool_restart,
             "write_fact": self._tool_write_fact,
             "read_facts": self._tool_read_facts,
+            "write_contract": self._tool_write_contract,
+            "read_contracts": self._tool_read_contracts,
         }.get(name)
         if handler is None:
             if name not in self.external:
@@ -149,6 +151,34 @@ class ToolsMixin:
         if not facts:
             return f"（{owner} 还没有事实）"
         return "\n".join(f"- {name}: {content}" for name, content in facts.items())
+
+    def _tool_write_contract(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        key = str(args.get("key") or "").strip()
+        content = str(args.get("content") or "").strip()
+        replace = bool(args.get("replace", False))
+        if not key or not content:
+            return "错误：write_contract 需要 key 与 content"
+        contracts = self.state.setdefault("contracts", {})
+        existing = contracts.get(key) or {}
+        if existing and not replace:
+            return (f"错误：契约 {key} 已冻结（v{existing.get('version', 1)}）；"
+                    "确实要改请传 replace=true（会记版本）")
+        version = int(existing.get("version", 0)) + 1
+        contracts[key] = {"content": content[:8000], "version": version}
+        self._save_state()
+        self.log.append("contract_written", worker_id=worker.id, key=key,
+                        version=version, replace=bool(existing))
+        return f"契约 {key} v{version} 已冻结（会注入所有 agent 的提示词，compact 也抹不掉）"
+
+    def _tool_read_contracts(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        contracts = self.state.get("contracts") or {}
+        if not contracts:
+            return "（还没有冻结契约）"
+        return "\n".join(
+            f"- {key} (v{item.get('version', 1)}): {item.get('content', '')}"
+            for key, item in contracts.items()
+        )
+
     def _tool_wait_workers(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         ids = [str(i) for i in args.get("worker_ids") or []]
         timeout = float(args.get("timeout_seconds") or 300)

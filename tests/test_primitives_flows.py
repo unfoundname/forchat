@@ -310,6 +310,45 @@ def test_parallel_spawn_and_log_integrity() -> None:
         if line.strip():
             json.loads(line)          # 半行会在这里抛 JSONDecodeError
 
+def test_contracts_frozen_and_injected() -> None:
+    """契约冻结：写一次后拒绝覆盖；replace=true 升版本；新 agent 提示里可见。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["write_contract", "read_contracts", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    provider = FakeProvider(
+        TemplateResponder(
+            {
+                "root": [
+                    tool_chunks([("write_contract", {"key": "GET /api/videos", "content": "返回 {items: [...]}"})]),
+                    tool_chunks([("write_contract", {"key": "GET /api/videos", "content": "改掉"})]),
+                    tool_chunks([("write_contract", {"key": "GET /api/videos", "content": "v2", "replace": True})]),
+                    tool_chunks([("report", {"summary": "契约完成"})]),
+                ]
+            }
+        )
+    )
+    run_dir = tmpdir()
+    runtime = Runtime(workflow, provider, run_dir)
+    runtime.start("任务")
+
+    rejected = [e for e in runtime.log.query(type="tool_result") if "已冻结" in str(e.get("result"))]
+    assert rejected, "第二次写入应当被拒"
+    written = runtime.log.query(type="contract_written")
+    assert [e["version"] for e in written] == [1, 2]
+    assert runtime.state["contracts"]["GET /api/videos"]["version"] == 2
+
+    second = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("report", {"summary": "新任务"})])]})
+    )
+    resumed = Runtime(workflow, second, run_dir)
+    resumed.start("继续")
+    system = second.seen[0][0]["content"] if second.seen else ""
+    assert "冻结契约" in system and "GET /api/videos" in system
+
+
 def main() -> int:
     checks = [
         ("运行时：派生 + 报告 + hook", test_runtime_spawns_and_reports),
@@ -325,6 +364,7 @@ def main() -> int:
         ("父 worker 读子报告", test_read_worker_report),
         ("调度器并发上限", test_scheduler_concurrency_limit),
         ("并行派生与日志完整性", test_parallel_spawn_and_log_integrity),
+        ("契约冻结与注入", test_contracts_frozen_and_injected),
     ]
     return run("原语流程自检", checks)
 

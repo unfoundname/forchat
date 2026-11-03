@@ -49,6 +49,21 @@ class PromptMixin:
                 + "\n"
             )
 
+        # 冻结契约：跨模块接口，优先级高于对话历史，compact 抹不掉
+        contracts = self.state.get("contracts") or {}
+        if contracts:
+            lines = []
+            for key, item in contracts.items():
+                content = str(item.get("content") or "")
+                if len(content) > 800:
+                    content = content[:800] + "…"
+                lines.append(f"- {key} (v{item.get('version', 1)}): {content}")
+            system += (
+                "\n--- 冻结契约（跨模块接口，不许漂移）---\n"
+                + "\n".join(lines)
+                + "\n"
+            )
+
         # 续跑：把历史 worker 的结论直接摆在新的根 worker 面前，别让它以为从零开始
         if worker.parent_id is None and self._restored:
             lines = []

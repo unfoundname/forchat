@@ -15,7 +15,7 @@ from .types import Budget
 BUILTIN_TOOLS = {
     "spawn", "report", "read_state", "write_note", "write_artifact",
     "read_worker_report", "wait_workers", "stop_worker",
-    "restart", "write_fact", "read_facts",
+    "restart", "write_fact", "read_facts", "write_contract", "read_contracts",
 }
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {
