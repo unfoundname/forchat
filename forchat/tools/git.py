@@ -45,6 +45,8 @@ def git(args: str, cwd: str = "") -> str:
         return f"错误：git {parts[0]} 超时（>{timeout:g}s）"
     except subproc.Cancelled:
         return "错误：已取消（worker 被停止）"
+    except subproc.SandboxUnavailable as exc:
+        return f"错误：沙箱不可用，命令未执行（fail-closed）：{exc}"
     except OSError as exc:
         return f"错误：无法执行 git：{exc}"
 

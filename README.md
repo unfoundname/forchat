@@ -343,7 +343,14 @@ cleanup_compacted(runs_root, keep_latest=3, dry_run=True)
 - **覆盖前自动备份**：`write_file` 覆盖已有文件前，把旧内容写到
   `.forchat-backups/<相对路径>`，写错至少能捞回来。
 
-真隔离属于部署层（容器 + 只读挂载 + 受限用户），不在本仓库范围内。
+### Windows ACL 写沙箱（可选，`FORCHAT_SANDBOX=acl`）
+
+用 `CreateRestrictedToken` + Low 完整性 + 工作区能力 SID（`S-1-4-x-y`）的 ACL 授权，
+把 `run_python` / `git` 子进程的**写**限制在工作区（+ 私有临时目录）；`read-only` 全拒；
+任何一步失败都 fail-closed。不需要管理员，也不是容器。机制与边界见
+[docs/sandbox-windows.md](docs/sandbox-windows.md)：只限写、读不受限、网络不隔离。
+
+完整隔离（读写 + 网络）仍属于部署层（容器 / VM），不在本仓库范围内。
 
 ## 成本核算
 

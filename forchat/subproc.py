@@ -38,6 +38,32 @@ class Cancelled(RuntimeError):
     """worker 被停止，正在跑的子进程被 kill。"""
 
 
+class SandboxUnavailable(RuntimeError):
+    """沙箱安装失败（fail-closed）：命令没有在无约束环境下执行。"""
+
+
+def _acl_enabled(env: dict[str, str]) -> bool:
+    flag = env.get("FORCHAT_SANDBOX") or os.environ.get("FORCHAT_SANDBOX")
+    return sys.platform == "win32" and flag == "acl"
+
+
+def _wrap_acl(cmd: list[str], cwd: Path, env: dict[str, str]) -> tuple[list[str], dict[str, str]]:
+    """把命令塞进 ACL 沙箱启动器；工作区默认是 cwd，可用 env 覆盖。"""
+    workspace = (env.get("FORCHAT_SANDBOX_WORKSPACE")
+                 or os.environ.get("FORCHAT_SANDBOX_WORKSPACE") or str(cwd))
+    mode = (env.get("FORCHAT_SANDBOX_MODE")
+            or os.environ.get("FORCHAT_SANDBOX_MODE", "workspace-write"))
+    temp = Path(workspace) / ".forchat-sandbox-tmp"
+    env = dict(env)
+    env["TMP"] = str(temp)
+    env["TEMP"] = str(temp)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    return [
+        sys.executable, "-m", "forchat.sandbox_win",
+        "--workspace", workspace, "--mode", mode, "--", *cmd,
+    ], env
+
+
 @contextlib.contextmanager
 def worker_context(worker_id: str):
     """在执行工具的线程里标出"当前是哪个 worker"，方便取消时定位子进程。"""
@@ -76,6 +102,10 @@ def run(
     limit_mb = MEMORY_MB if memory_mb is None else memory_mb
     envv = env or clean_environ()
     worker_id = _CURRENT.get()
+    wrapped = False
+    if _acl_enabled(envv):
+        cmd, envv = _wrap_acl(cmd, Path(cwd), envv)
+        wrapped = True
 
     def _preexec() -> None:                     # pragma: no cover - Windows 走不到
         import resource
@@ -125,6 +155,8 @@ def run(
                 continue
             if cancel is not None and cancel.is_set():
                 raise Cancelled("worker stopped")
+            if wrapped and proc.returncode == 127 and "forchat-acl-run:" in (err or ""):
+                raise SandboxUnavailable((err or "").strip()[-600:])
             return subprocess.CompletedProcess(cmd, proc.returncode, out or "", err or "")
     finally:
         if worker_id:

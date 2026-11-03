@@ -11,6 +11,7 @@ node_modules/
 .worktrees/
 .forchat-backups/
 .forchat-locks/
+.forchat-sandbox-tmp/
 pricing.json
 *.egg-info/
 build/

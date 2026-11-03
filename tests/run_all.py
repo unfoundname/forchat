@@ -29,6 +29,7 @@ STEPS = [
     ("web_search/视觉自检", [sys.executable, "tests/test_web.py"]),
     ("并发安全自检", [sys.executable, "tests/test_concurrency.py"]),
     ("写锁自检", [sys.executable, "tests/test_locks.py"]),
+    ("Windows ACL 沙箱", [sys.executable, "tests/test_sandbox_win.py"]),
     ("分层校验", [sys.executable, "tests/test_layering.py"]),
     ("端到端 demo", [sys.executable, "examples/run_demo.py"]),
     ("MCP 自检", [sys.executable, "examples/smoke_mcp.py"]),
