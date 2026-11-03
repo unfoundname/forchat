@@ -12,7 +12,7 @@ from .. import subproc
 from ..env_scrub import clean_environ
 from ..registry import tool
 
-TIMEOUT = 120
+TIMEOUT = 600
 MAX_OUTPUT = 800
 
 
@@ -21,7 +21,7 @@ MAX_OUTPUT = 800
                 "用来把验收标准变成机器可判的检查，而不是靠 report 自述。",
     params={
         "checks": "数组：[{name, script, args?, cwd?}]，script 必须是项目内的 .py",
-        "timeout_seconds": "每项超时秒数，默认 120",
+        "timeout_seconds": "每项超时秒数，默认 600",
     },
 )
 def run_checks(checks: list[dict], timeout_seconds: float = TIMEOUT) -> str:

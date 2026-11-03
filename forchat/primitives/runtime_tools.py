@@ -54,6 +54,7 @@ class ToolsMixin:
             "write_note": self._tool_write_note,
             "write_artifact": self._tool_write_artifact,
             "read_worker_report": self._tool_read_worker_report,
+            "inspect_worker": self._tool_inspect_worker,
             "wait_workers": self._tool_wait_workers,
             "stop_worker": self._tool_stop_worker,
             "restart": self._tool_restart,
@@ -271,7 +272,7 @@ class ToolsMixin:
 
     def _tool_wait_workers(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         ids = [str(i) for i in args.get("worker_ids") or []]
-        timeout = float(args.get("timeout_seconds") or 300)
+        timeout = float(args.get("timeout_seconds") or 600)
         with self._lock:
             if not ids:
                 ids = [wid for wid, w in self.workers.items()
@@ -299,7 +300,12 @@ class ToolsMixin:
                 lines.append(f"- {wid}: 不存在")
             elif wid in pending:
                 state = "排队中" if target.status == "queued" else "仍在运行"
-                lines.append(f"- {wid}: {state}（timeout={timeout}s）")
+                idle = round(time.time() - self._beats.get(wid, time.time()), 1)
+                suspect = wid in getattr(self, "_suspect_workers", set())
+                lines.append(
+                    f"- {wid}: {state}（timeout={timeout}s，idle={idle}s，"
+                    f"suspect={suspect}）— 先 inspect_worker 视察，确认偏离再 stop_worker/restart"
+                )
             else:
                 summary = (target.report.summary if target.report else "")[:160]
                 lines.append(f"- {wid}: {target.status} — {summary or '（无报告）'}")
@@ -388,6 +394,36 @@ class ToolsMixin:
         data["status"] = target.status
         data["template"] = target.template
         return json.dumps(data, ensure_ascii=False)
+
+    def _tool_inspect_worker(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
+        """只读视察：不重启、不停；父 agent 据此判断是否真的偏离。"""
+        target_id = str(args.get("worker_id") or "")
+        target = self.workers.get(target_id)
+        if target is None:
+            return f"错误：没有 worker {target_id}"
+        tail = max(1, min(30, int(args.get("tail") or 8)))
+        now = time.time()
+        idle = round(now - self._beats.get(target_id, now), 1)
+        lines = [
+            f"worker {target.id} [{target.template}] status={target.status}",
+            f"task: {target.task}",
+            f"idle: {idle}s  suspect: {target_id in getattr(self, '_suspect_workers', set())}",
+            f"budget: {json.dumps(target.budget.snapshot(), ensure_ascii=False)}",
+        ]
+        events = [e for e in self.log.read() if e.get("worker_id") == target_id]
+        lines.append(f"recent events (last {min(tail, len(events))}):")
+        for event in events[-tail:]:
+            kind = event.get("type", "?")
+            if kind in ("tool_call", "tool_result"):
+                text = event.get("arguments") or event.get("result") or ""
+                lines.append(f"- {kind} {event.get('tool', '?')}: {str(text)[:200]}")
+            elif kind == "assistant_message":
+                lines.append(f"- assistant: {str(event.get('text', ''))[:200]}")
+            elif kind == "round_finish":
+                lines.append(f"- round_finish {event.get('finish_reason', '')}")
+            else:
+                lines.append(f"- {kind}")
+        return "\n".join(lines)
     def _tool_specs(self, tpl: WorkerTemplate) -> list[dict]:
         specs: list[dict] = []
         for name in tpl.tools:

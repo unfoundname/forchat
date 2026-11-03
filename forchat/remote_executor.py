@@ -17,6 +17,14 @@ class RemoteExecutor:
         self.queue = RemoteQueue(queue_root)
         self.timeout = timeout
 
+    def suspects(self) -> list[dict]:
+        """心跳超时的任务（只标记，不自动重派；父 agent 视察后再决定）。"""
+        return self.queue.suspects()
+
+    def requeue(self, task_id: str) -> bool:
+        """视察确认需要重派时调用。"""
+        return self.queue.requeue(task_id)
+
     def __call__(self, payload: dict[str, Any], cancel: Callable[[], bool]) -> dict[str, Any]:
         task_id = str(payload["worker"]["id"])
         self.queue.submit(task_id, payload)

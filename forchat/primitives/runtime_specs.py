@@ -92,6 +92,22 @@ TOOL_SPECS: dict[str, dict] = {
             },
         },
     },
+    "inspect_worker": {
+        "type": "function",
+        "function": {
+            "name": "inspect_worker",
+            "description": "视察一个在跑/卡住的 worker：返回任务、状态、预算、是否 suspect、最近事件。"
+                           "只读，不重启也不停止；父 agent 用它判断子 agent 是否真的偏离工作。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worker_id": {"type": "string", "description": "要视察的 worker id"},
+                    "tail": {"type": "integer", "description": "返回最近多少条事件，默认 8"},
+                },
+                "required": ["worker_id"],
+            },
+        },
+    },
     "wait_workers": {
         "type": "function",
         "function": {
@@ -108,7 +124,7 @@ TOOL_SPECS: dict[str, dict] = {
                     },
                     "timeout_seconds": {
                         "type": "number",
-                        "description": "最多等多久，默认 300 秒",
+                        "description": "最多等多久，默认 600 秒；超时只返回状态与 suspect，不自动重启",
                     },
                 },
             },

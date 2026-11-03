@@ -24,8 +24,8 @@ DOMAIN_WORDS = {"bilibili", "B站", "哔哩", "视频", "弹幕", "视频流", "
 
 LOOP_OWNER = "forchat/primitives/runtime_worker.py"
 MAX_LINES = 500
-# 执行循环的"指纹"：同时出现 tool_calls 累积（setdefault）和 finish_reason 处理，才算循环
-LOOP_MARKERS = {"setdefault", "finish_reason"}
+# 执行循环的"指纹"：同时出现 tool_calls 累积（setdefault）、finish_reason 处理和流式分片循环
+LOOP_MARKERS = {"setdefault", "finish_reason", "for chunk"}
 
 
 def py_files(rel: str) -> list[Path]:

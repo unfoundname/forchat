@@ -16,7 +16,8 @@ remote agent (forchat.remote_agent) x N
 coordinator 轮询 results/<id>.json，更新 WorkerInstance
 ```
 
-- 超时租约（默认 120s）由 agent 的 `requeue_stale()` 放回 tasks；
+- 租约超时（默认 **1800s**）**不会自动重派**：agent 只写 `suspects/<id>.json` 并继续等心跳；
+  由父 agent 视察后调用 `RemoteExecutor.requeue(task_id)` 显式重派，或写 cancel 取消；
 - 取消：coordinator 写 `cancels/<id>.cancel`，agent 看到后 kill 子进程；
 - worker 的事件仍然写共享 run 目录（跨进程文件锁）。
 
@@ -44,7 +45,8 @@ python -m forchat.remote_agent --queue "\\shared\forchat\queue" --poll 0.5
   不要把 queue 暴露给不可信用户；agent 上不要放比 worker 需要更多的密钥。
 - `run_dir` 也必须对 agent 可读写（事件、facts、结果都要共享）；不同机器上的路径必须一致或可映射。
 - 跨主机**没有强杀**：取消是协作式的（agent 收到 cancel 后 kill 本地子进程）；agent 自己挂掉时，
-  租约超时后任务会被重新派发，原进程可能成为孤儿，需要部署层兜底（systemd/cgroup 清理）。
+  租约超时只标记 suspect，不会自动重派；父 agent 视察确认后才显式 requeue/取消，原进程可能成为孤儿，
+  需要部署层兜底（systemd/cgroup 清理）。
 - 共享文件系统的一致性/锁语义由 NFS/SMB 负责；`EVENT_LOG` 的文件锁在部分网络文件系统上不可靠，
   大规模部署建议把 run_dir 放在同一台存储节点，或后续换 HTTP 队列。
 - 模型 key 在执行机上（agent 继承环境）；coordinator 不需要替远程 worker 保管 key。

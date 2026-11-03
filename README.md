@@ -162,8 +162,15 @@ $env:FORCHAT_REMOTE_DIR = "\\shared\forchat\queue"
 python -m forchat --workflow examples/workflows/delivery/workflow.json "目标"
 ```
 
-支持租约、心跳、超时重派、协作式取消；要求 queue 和 run 目录共享、执行机代码版本一致。
+支持租约、心跳、协作式取消；租约超时（默认 1800s）**只标记 suspect，不自动重派**——
+父 agent 用 `inspect_worker` 视察、确认偏离后才 `stop_worker`/显式 requeue。
+要求 queue 和 run 目录共享、执行机代码版本一致。
 安全与限制见 [docs/distributed.md](docs/distributed.md)（这是信任边界，不是零信任协议）。
+
+**监督超时**：看门狗默认 `FORCHAT_STUCK_SECONDS=1800`（30 分钟），超过只记 `stuck_detected`
+并标 suspect，**不自动 stop/restart**；父 agent 收到 `wait_workers` 的 `suspect=true` 后先
+`inspect_worker(worker_id)` 看任务/预算/最近事件，确认真的跑偏再重启或关闭。
+`FORCHAT_STUCK_ACTION=stop` 才恢复旧行为。
 
 ## 三层
 

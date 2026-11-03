@@ -120,6 +120,7 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, Re
         self._root_id: str | None = None
         self._beats: dict[str, float] = {}          # worker_id -> 最后一次心跳时间
         self._stuck_reported: set[str] = set()
+        self._suspect_workers: set[str] = set()
         if restore:
             self._restore()
 
@@ -341,12 +342,16 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, Re
             return result
 
     def _start_watchdog(self) -> threading.Event:
-        """后台看门狗：发现长时间没心跳的 worker → 记事件；action=stop 时直接停。"""
+        """后台看门狗：发现长时间没心跳的 worker → 标记 suspect（默认不 stop）。
+
+        默认 `review`：只记 `stuck_detected` 事件，让父 agent 用 `inspect_worker` 视察后
+        再决定 stop/restart；`FORCHAT_STUCK_ACTION=stop` 才直接停。
+        """
         stop = threading.Event()
         try:
-            threshold = float(os.environ.get("FORCHAT_STUCK_SECONDS", "600"))
+            threshold = float(os.environ.get("FORCHAT_STUCK_SECONDS", "1800"))
         except ValueError:
-            threshold = 600.0
+            threshold = 1800.0
         if threshold <= 0:
             return stop
 
@@ -358,7 +363,8 @@ class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, Re
                     if item.get("status") != "running" or worker_id in self._stuck_reported:
                         continue
                     self._stuck_reported.add(worker_id)
-                    action = os.environ.get("FORCHAT_STUCK_ACTION", "log")
+                    self._suspect_workers.add(worker_id)
+                    action = os.environ.get("FORCHAT_STUCK_ACTION", "review")
                     self.log.append("stuck_detected", worker_id=worker_id,
                                     idle_seconds=item.get("idle_seconds"), action=action)
                     if action == "stop":

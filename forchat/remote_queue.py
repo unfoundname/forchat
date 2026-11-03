@@ -21,7 +21,7 @@ from pathlib import Path
 class RemoteQueue:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
-        for name in ("tasks", "leases", "results", "cancels"):
+        for name in ("tasks", "leases", "results", "cancels", "suspects"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
 
     def task_path(self, task_id: str) -> Path:
@@ -74,19 +74,49 @@ class RemoteQueue:
         except (OSError, json.JSONDecodeError):
             return None
 
-    def requeue_stale(self, timeout: float = 120.0) -> int:
+    def mark_suspects(self, timeout: float = 1800.0) -> list[str]:
+        """心跳超时的租约只标记为 suspect，不自动重派（先让人/父 agent 视察）。"""
         now = time.time()
-        moved = 0
+        marked: list[str] = []
         for lease in list((self.root / "leases").glob("*.json")):
             try:
                 if now - lease.stat().st_mtime <= timeout:
                     continue
             except OSError:
                 continue
-            task_id = lease.name.split(".", 1)[0]
+            task_id, agent = lease.name.split(".", 1)
+            suspect = self.root / "suspects" / f"{task_id}.json"
+            if suspect.is_file():
+                continue
+            self._write(suspect, {
+                "task_id": task_id,
+                "agent": agent.removesuffix(".json"),
+                "lease": lease.name,
+                "since": now,
+                "note": "lease heartbeat stale; inspect before requeue/cancel",
+            })
+            marked.append(task_id)
+        return marked
+
+    def suspects(self) -> list[dict]:
+        items = []
+        for path in sorted((self.root / "suspects").glob("*.json")):
             try:
-                os.replace(lease, self.task_path(task_id))
-                moved += 1
-            except OSError:
-                pass
-        return moved
+                items.append(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError):
+                continue
+        return items
+
+    def requeue(self, task_id: str) -> bool:
+        """人工/父 agent 视察后明确要求重派。"""
+        leases = list((self.root / "leases").glob(f"{task_id}.*.json"))
+        if not leases:
+            return False
+        try:
+            payload = json.loads(leases[0].read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        self._write(self.task_path(task_id), payload)
+        leases[0].unlink(missing_ok=True)
+        (self.root / "suspects" / f"{task_id}.json").unlink(missing_ok=True)
+        return True

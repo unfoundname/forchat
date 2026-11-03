@@ -71,13 +71,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent-id", default=f"{os.uname().nodename}-{os.getpid()}"
                         if hasattr(os, "uname") else f"agent-{os.getpid()}")
     parser.add_argument("--poll", type=float, default=0.5)
-    parser.add_argument("--stale", type=float, default=120.0, help="租约超时秒数")
+    parser.add_argument("--stale", type=float, default=1800.0,
+                        help="租约多久没心跳算 suspect（默认 1800s，只标记不重派）")
     parser.add_argument("--once", action="store_true", help="执行一个任务后退出")
     args = parser.parse_args(argv)
 
     queue = RemoteQueue(Path(args.queue))
     while True:
-        queue.requeue_stale(args.stale)
+        queue.mark_suspects(args.stale)
         leased = queue.lease(args.agent_id)
         if leased is None:
             if args.once:
