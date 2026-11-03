@@ -149,6 +149,10 @@ def _assemble(workflow: WorkflowDef, run_dir: Path) -> Runtime:
 def _execute(workflow: WorkflowDef, run_dir: Path, goal: str, label: str = "run") -> int:
     runtime = _assemble(workflow, run_dir)
     print(f"[{label}] workflow={workflow.name} entry={workflow.entry} dir={run_dir}")
+    if runtime.interrupted:
+        names = ", ".join(runtime.interrupted[:5])
+        more = f" 等 {len(runtime.interrupted)} 个" if len(runtime.interrupted) > 5 else ""
+        print(f"[{label}] 上次中断的 worker：{names}{more}（会在根提示里列出，交给模型重新派发）")
 
     try:
         root = runtime.start(goal)

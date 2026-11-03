@@ -209,6 +209,7 @@ class Runtime:
         self._seq = 0
         self.started_at = time.time()
         self._restored: list[str] = []
+        self._interrupted: list[str] = []
         self._restore()
 
     # ------------------------------------------------------------------ 续跑
@@ -253,14 +254,27 @@ class Runtime:
             if digits.isdigit():
                 self._seq = max(self._seq, int(digits))
 
+        # 没有 worker_done 的 worker = 上次进程崩了/被杀时还在跑，标记 interrupted 交给新根处理
+        for wid, item in self.workers.items():
+            if item.status == "pending" and wid not in {e.get("worker_id") for e in events
+                                                        if e.get("type") == "worker_done"}:
+                item.status = "interrupted"
+                self._interrupted.append(wid)
+
         self._restored = list(self.workers)
         self.log.append(
             "run_resumed",
             workers=len(self.workers),
             next_seq=self._seq + 1,
+            interrupted=len(self._interrupted),
         )
 
     # ------------------------------------------------------------------ 状态
+    @property
+    def interrupted(self) -> list[str]:
+        """上次运行中断（没有 worker_done）的 worker id。"""
+        return list(self._interrupted)
+
     def _load_state(self) -> dict[str, Any]:
         if not self.state_path.is_file():
             return {}
@@ -804,6 +818,18 @@ class Runtime:
                 + "\n".join(lines)
                 + "\n需要全文时用 read_worker_report(worker_id)；plan 与笔记用 read_state 读。\n"
             )
+
+            if self._interrupted:
+                detail = []
+                for wid in self._interrupted[-10:]:
+                    prev = self.workers[wid]
+                    detail.append(f"- {wid} [{prev.template}] 任务：{prev.task[:120]}")
+                system += (
+                    "\n--- 上次运行中断（进程崩溃/被杀时还在跑）---\n"
+                    + "\n".join(detail)
+                    + "\n这些任务没有完成也没有报告。请判断是否需要用 spawn 重新派发，"
+                      "或者由你接手；不要假设它们已经做完。\n"
+                )
 
         return [
             {"role": "system", "content": system},

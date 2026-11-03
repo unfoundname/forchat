@@ -374,6 +374,10 @@ root
 续跑语义是「继续推进这个项目」，不是复活死掉的 worker：历史 worker 只读、新 worker 序号接着涨，
 根 worker 的系统提示里会带上历史摘要（全文用 `read_worker_report` 查）。
 
+**崩溃恢复**：上次进程被杀时没有 `worker_done` 的 worker 会被标成 `interrupted`，
+`--resume` 会把它们的**任务原文**列进根提示与命令行，由模型决定重新派发还是接手——
+引擎不会自动复活在途 worker（那需要持久化的执行快照，目前没有）。
+
 ## 学习路径
 
 1. `CONTEXT.md` —— 先对齐词汇，三层不许混

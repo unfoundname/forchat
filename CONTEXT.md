@@ -28,6 +28,7 @@
 - **EventLog**：append-only 事件流，是"完整存储"的唯一物理形态。会话、重放、复盘都从它读。
 - **Replay**：只读重建一次运行——`review()` 流水账、`tree()` 派生树、`summary()` 每个 worker 的消耗与摘要。
 - **续跑（resume）**：同一 run 目录再次运行。历史 worker 只读、序号接着涨，根 worker 的系统提示里带历史摘要。
+- **中断（interrupted）**：上次进程崩溃/被杀时没有 `worker_done` 的 worker；续跑时标记为 `interrupted`，任务原文会列进根提示，由模型决定重新派发或接手（引擎不自动复活它）。
 - **围栏（fence）**：能力限制，优先于事后熔断。递归靠 `can_spawn` 为空来杜绝，不是靠层数。
 - **授权范围（scope）**：worker 只能修改的目录列表（相对项目根）。空 = 整个项目根；由父 worker 在 `spawn(paths=...)` 时授予，不能超出自己范围。
 - **护栏 ≠ 沙箱**：Policy 只检查工具参数；`run_python` 里的脚本是任意代码，真隔离在部署层（容器/只读挂载/受限用户）。

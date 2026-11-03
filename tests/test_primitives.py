@@ -819,6 +819,33 @@ def test_stop_worker_kills_running_child() -> None:
     assert "killed" in summary
 
 
+def test_interrupted_worker_recovered_on_resume() -> None:
+    """上次运行没写 worker_done 的 worker = 中断，续跑时要标记并可追溯到任务。"""
+    from forchat.primitives.store import EventLog
+
+    run_dir = tmpdir()
+    log = EventLog(run_dir)
+    log.append(
+        "worker_created", worker_id="n001-root", template="root", depth=0,
+        parent=None, task="上次没跑完的任务", scope=[],
+    )
+    # 故意不写 worker_done：模拟进程被杀
+
+    workflow = WorkflowDef.load(MINIMAL)
+    provider = FakeProvider(
+        TemplateResponder({"root": [tool_chunks([("report", {"summary": "续跑完成"})])]})
+    )
+    runtime = Runtime(workflow, provider, run_dir)
+
+    assert runtime.workers["n001-root"].status == "interrupted"
+    assert runtime.interrupted == ["n001-root"]
+
+    runtime.start("继续")
+    system = provider.seen[0][0]["content"]
+    assert "上次运行中断" in system
+    assert "上次没跑完的任务" in system
+
+
 def main() -> int:
     checks = [
         ("budget 记账与判废", test_budget),
@@ -858,6 +885,7 @@ def main() -> int:
         ("workflow 拒绝未知技能", test_workflow_rejects_unknown_skill),
         ("越权授权被拒", test_spawn_cannot_grant_beyond_scope),
         ("stop_worker 叫停分支", test_stop_worker_kills_running_child),
+        ("中断 worker 续跑可见", test_interrupted_worker_recovered_on_resume),
     ]
     return run("原语自检", checks)
 
