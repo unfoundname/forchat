@@ -99,6 +99,7 @@ python -m forchat --resume .runs/<run> "继续推进"                    # 在�
 | `merge` | 串行合并多个功能分支 | git merge |
 | `capstone` | 封顶：3 分支并行 → 汇合 → 串行合并 → 复跑 | spawn(wait=false) / wait_workers / git merge |
 | `scale` | 规模：6 分支并行（并发上限 4）→ 汇合 → 合并 → 复跑 | 同上 + 并发限流 |
+| `stress` | 压力：10 分支并行（并发 4 排队）→ 合并 10 次 → 复跑 | 同上 + 排队与护栏压力 |
 
 ## 写一个 workflow 包
 
@@ -336,6 +337,31 @@ root
 
 同一次运行里护栏触发了 1 次：root 试图让 `run_python` 执行非 `.py` 文件，被
 `tool_denied: 只能执行 .py 脚本` 拒绝——说明护栏在真实运行里是在生效的。
+
+## 压力样本（stress）
+
+`examples/workflows/stress`：10 个 coder 一次派出，`max_concurrent=4` 形成排队。
+
+| 指标 | 实测 |
+|---|---|
+| worker 数 | 11（root + 10） |
+| tokens | 57997 / 600000（10%） |
+| 墙钟 | 229s（worker 合计 662s，排队后仍重叠执行） |
+| 合并 | 10 次 `--no-ff`，无冲突 |
+| 复跑 | 10 个测试我独立跑：`ok=10/10` |
+
+**最有价值的部分**：这次真跑里护栏触发了 **6 次**，全是 worker 真实尝试越界：
+
+| worker | 尝试 | 拦截 |
+|---|---|---|
+| n002 | 写 `D:\tmp\alpha_msg.txt` | 路径越界 |
+| n006 | git 操作 `.epsilon_commit_msg.tmp` | 不在授权范围 |
+| n009 | 写 `.git/theta-commit-msg.txt` | 不在授权范围（敏感路径） |
+| n009 | 写 `.forchat-backups/...` | 不在授权范围 |
+| n009 | 反复尝试临时文件 | 全部被拒 |
+
+也就是说：**模型会为了让提交信息更好看，去写 worktree 之外的临时文件**——这正是你担心的"处理到别的范围"，
+在 10 分支压力下被 scope 挡住了。
 
 ## 续跑
 

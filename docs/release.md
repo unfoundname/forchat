@@ -30,6 +30,7 @@ workflow examples/workflows/<name>/（可加载配置，非代码）
 
 | 运行 | 形状 | 结果 |
 |---|---|---|
+| `stress-20261103-150621` | 11 worker / 10 分支并行（并发 4 排队）→ 合并 10 次 → 复跑 10 套测试 | done，58k tokens，229s；护栏触发 6 次 |
 | `scale-20261103-145527` | 7 worker / 6 分支并行（并发 4）→ 串行合并 → 复跑 6 套测试 | done，44.2k tokens，167.7s |
 | `capstone-20261103-141817` | 5 worker / 3 分支 → 合并 → 复跑 | done，39.1k tokens，328s |
 | `worktree-20261103-140201` | 3 worker，分支内写码+自测+提交 | done，27.2k tokens |

@@ -1,0 +1,26 @@
+{
+  "name": "stress",
+  "version": 1,
+  "entry": "root",
+  "limits": {
+    "max_concurrent": 4,
+    "max_depth": 2,
+    "max_workers": 16,
+    "max_wall_seconds": 3000,
+    "max_total_tokens": 600000
+  },
+  "workers": {
+    "root": {
+      "role_file": "prompts/root.md",
+      "can_spawn": ["coder"],
+      "tools": ["spawn", "wait_workers", "git", "run_python", "read", "read_state", "write_note", "read_worker_report", "report"],
+      "budget": {"tokens": 120000, "wall_seconds": 1800}
+    },
+    "coder": {
+      "role_file": "prompts/coder.md",
+      "can_spawn": [],
+      "tools": ["git", "write_file", "read", "run_python", "report", "read_state"],
+      "budget": {"tokens": 40000, "wall_seconds": 600}
+    }
+  }
+}
