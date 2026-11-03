@@ -14,6 +14,7 @@ _INTERESTING = {
     "spawn_rejected", "hook_spawn", "hook_action", "report", "worker_done",
     "budget_exhausted", "run_finished", "tool_denied", "worker_error", "run_resumed",
     "response_truncated", "run_budget_exhausted", "worker_stop_requested",
+    "context_compacted", "worker_restarted", "fact_written", "worker_queued",
 }
 
 
@@ -192,6 +193,15 @@ class Replay:
             return f"[{wid}] 收到停止请求{extra}"
         if kind == "run_resumed":
             return f"续跑：历史 workers={event.get('workers')} 下一个序号={event.get('next_seq')}"
+        if kind == "context_compacted":
+            return (f"[{wid}] 上下文 compact：裁掉 {event.get('dropped')} 条，"
+                    f"归档 {event.get('archive')}")
+        if kind == "worker_restarted":
+            return f"[{wid}] 自重启（清空对话，事实保留）"
+        if kind == "worker_queued":
+            return f"[{wid}] 排队（pending={event.get('pending')}）"
+        if kind == "fact_written":
+            return f"[{wid}] 写事实 {event.get('name')}"
         if kind == "run_finished":
             return f"运行结束：workers={event.get('workers')} 用时={event.get('elapsed')}s"
         return f"[{wid}] {kind}"

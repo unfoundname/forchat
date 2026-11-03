@@ -35,27 +35,70 @@ class WorkerMixin:
 
         head = messages[:2]
         tail = messages[2:]
-        keep = max(4, limit_messages - 3)   # 2 条头部 + 1 条裁剪说明 + 最近 keep 条
+        keep = max(4, limit_messages - 3)   # 2 条头部 + 1 条摘要 + 最近 keep 条
         selected = tail[-keep:]
         while selected and selected[0].get("role") == "tool":
             selected = selected[1:]
-        dropped = len(tail) - len(selected)
-        if dropped <= 0:
+        dropped = tail[: len(tail) - len(selected)]
+        if not dropped:
             return
 
+        # compact = 归档全文 + 确定性摘要（不额外调模型，便宜且可复现）
+        archive = self._archive_compacted(worker, dropped)
+        digest = self._digest(dropped)
         note = {
             "role": "user",
-            "content": f"（较早的 {dropped} 条消息已裁剪，只保留最近轮次；需要细节请重新 read/grep。）",
+            "content": (
+                f"（较早的 {len(dropped)} 条消息已 compact。摘要：\n{digest}\n"
+                f"全文：{archive}；需要细节也可以重新 read/grep。）"
+            ),
         }
         messages[:] = head + [note] + selected
         self.log.append(
-            "context_trimmed",
+            "context_compacted",
             worker_id=worker.id,
-            dropped=dropped,
+            dropped=len(dropped),
             kept=len(messages),
             chars=sum(len(str(item.get("content") or "")) for item in messages),
+            archive=archive,
             tight=tight,
         )
+
+    def _archive_compacted(self, worker: WorkerInstance, dropped: list[dict]) -> str:
+        """把被裁掉的对话整段落盘，之后可以查（--inspect 或直接读文件）。"""
+        folder = self.dir / "compacted"
+        folder.mkdir(parents=True, exist_ok=True)
+        index = len(list(folder.glob(f"{worker.id}-*.json"))) + 1
+        path = folder / f"{worker.id}-{index:03d}.json"
+        payload = {
+            "worker_id": worker.id,
+            "round": index,
+            "messages": dropped,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+        return str(path.relative_to(self.dir))
+
+    @staticmethod
+    def _digest(messages: list[dict]) -> str:
+        """只取"说过什么、调过什么工具"，不保留原文——够唤醒记忆即可。"""
+        parts: list[str] = []
+        for item in messages:
+            role = item.get("role")
+            if role == "assistant":
+                text = str(item.get("content") or "")[:100]
+                calls = [
+                    str(call.get("function", {}).get("name", "?"))
+                    for call in item.get("tool_calls") or []
+                ]
+                line = f"assistant: {text}".rstrip()
+                if calls:
+                    line += f" [工具 {', '.join(calls)}]"
+                parts.append(line)
+            elif role == "tool":
+                parts.append(f"tool结果: {str(item.get('content') or '')[:60]}")
+            elif role == "user":
+                parts.append(f"user: {str(item.get('content') or '')[:80]}")
+        return "\n".join(parts)[:1000]
 
     def _run_worker(
         self, worker: WorkerInstance, resume: dict | None = None, run_hooks: bool = True

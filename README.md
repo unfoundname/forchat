@@ -212,12 +212,18 @@ def upper(text: str) -> str:
 > 接入方式：`forchat/tool_bridge.py` 把 registry 里的工具导出成 `{name: (spec, caller)}` 注入 `Runtime`。
 > 在 `workflow.json` 的 `tools` 里写工具名即可（校验时会拿"这台机器上当前注册了哪些工具"来比对）：
 
-## 上下文管理
+## 上下文管理（compact）
 
 worker 默认不限轮数，但 `messages` 不会无限涨：每轮请求前，如果超过
 `FORCHAT_CONTEXT_MESSAGES`（默认 80 条）或 `FORCHAT_CONTEXT_CHARS`（默认 160k 字符），
-就保留 `system + 原始任务 + 最近轮次`，裁掉中间历史，并记 `context_trimmed` 事件。
-"跑上百轮"的前提是这条裁剪真的在跑，否则几十轮后必然撞上下文上限。
+就保留 `system + 原始任务 + 最近轮次`，**把中间历史 compact 掉**：
+
+1. 被裁掉的整段对话**归档**到 `compacted/<worker>-<序号>.json`（不丢，可查）；
+2. 在对话里插入一段**确定性摘要**（谁说了什么、调过哪些工具名，前 1000 字符）；
+3. 记 `context_compacted` 事件（含归档路径；`--inspect` 能看到这一行）。
+
+不是调模型做总结——那是额外一次请求，成本和时延都不可控；现在的做法是"可复现的摘要 + 全文归档"，
+需要细节时还能 `read`/`grep`/读归档，事实（facts）则完全不受 compact 影响。
 
 ## 规模与预算
 

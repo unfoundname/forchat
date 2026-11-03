@@ -44,7 +44,13 @@ def test_context_trimmed_for_long_sessions() -> None:
             os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
 
     assert root.status == "done", root.status
-    assert runtime.log.query(type="context_trimmed")
+    compacted = runtime.log.query(type="context_compacted")
+    assert compacted
+    # 被裁掉的对话要归档 + 有确定性摘要，不是简单丢弃
+    archive = runtime.dir / compacted[0]["archive"]
+    assert archive.is_file()
+    digest = str(archive.read_text(encoding="utf-8"))
+    assert "read_state" in digest
     assert max(len(seen) for seen in provider.seen) <= 12
 
 def test_thinking_logging_is_opt_in() -> None:
@@ -129,7 +135,7 @@ def test_context_trim_tightens_when_budget_low() -> None:
         else:
             os.environ["FORCHAT_CONTEXT_MESSAGES"] = old
 
-    trimmed = runtime.log.query(type="context_trimmed")
+    trimmed = runtime.log.query(type="context_compacted")
     assert any(event.get("tight") for event in trimmed), trimmed
 
 def test_queued_state_visible() -> None:
