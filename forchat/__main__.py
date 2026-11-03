@@ -16,8 +16,8 @@ from pathlib import Path
 
 from . import registry, skills
 from . import tools  # noqa: F401  (触发能力工具注册)
-from .mcp_bridge import connect_from_config
-from .primitives import Replay, Runtime, WorkflowDef, WorkflowError
+from .mcp_bridge import close_all, connect_from_config
+from .primitives import EventLog, Replay, Runtime, WorkflowDef, WorkflowError
 
 DEFAULT_WORKFLOW = Path("examples/workflows/minimal/workflow.json")
 
@@ -27,7 +27,21 @@ USAGE = """用法:
   python -m forchat --tools     列出能力工具（含 MCP）
   python -m forchat --skills    列出已加载技能
   python -m forchat --mcp       连接 mcp_servers.json 里的服务端
+  python -m forchat --inspect <run-dir>   复查一次历史运行
 """
+
+
+def _inspect(run_dir: Path) -> int:
+    if not (run_dir / "events.jsonl").is_file():
+        print(f"没有事件流：{run_dir}")
+        return 2
+    replay = Replay(EventLog(run_dir))
+    print(replay.tree())
+    print()
+    print(replay.summary())
+    print("\n最近事件：")
+    print("\n".join(replay.review().splitlines()[-25:]))
+    return 0
 
 
 def _list_tools() -> None:
@@ -48,6 +62,7 @@ def _list_skills() -> None:
 
 
 def _run_workflow(path: Path, goal: str) -> int:
+    from .policy import Policy
     from .providers.deepseek import DeepSeekProvider
     from .skills import load_skills
     from .tool_bridge import build as build_tools, build_skill_loader, known_names
@@ -70,6 +85,7 @@ def _run_workflow(path: Path, goal: str) -> int:
         run_dir,
         external_tools=build_tools(),
         skill_loader=build_skill_loader(),
+        guard=Policy(Path.cwd()).check,
     )
     print(f"[run] workflow={workflow.name} entry={workflow.entry} dir={run_dir}")
 
@@ -81,6 +97,8 @@ def _run_workflow(path: Path, goal: str) -> int:
     except RuntimeError as exc:
         print(f"[error] {exc}")
         return 2
+    finally:
+        close_all()          # MCP 子进程由装配层负责收尾，不留给 atexit
 
     print("\n" + Replay(runtime.log).tree())
     report = root.report.to_dict() if root.report else {}
@@ -97,6 +115,7 @@ def main() -> None:
         return
     if args and args[0] == "--tools":
         _list_tools()
+        close_all()
         return
     if args and args[0] == "--skills":
         _list_skills()
@@ -104,7 +123,13 @@ def main() -> None:
     if args and args[0] == "--mcp":
         clients = connect_from_config()
         print(f"已连接 {len(clients)} 个服务端" if clients else "没有连上任何 MCP 服务端")
+        close_all()
         return
+    if args and args[0] == "--inspect":
+        if len(args) < 2:
+            print("--inspect 需要一个运行目录，例如 .runs/minimal-20261103-130000")
+            return
+        raise SystemExit(_inspect(Path(args[1])))
 
     workflow_path = DEFAULT_WORKFLOW
     if args[:1] == ["--workflow"]:

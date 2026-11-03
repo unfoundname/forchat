@@ -34,6 +34,36 @@ class Replay:
                 break
         return "\n".join(lines)
 
+    def summary(self) -> str:
+        """每个 worker 一行：模板 / 状态 / tokens / 秒 / 报告摘要。"""
+        workers: dict[str, dict[str, Any]] = {}
+        for event in self.log.read():
+            kind = event.get("type")
+            wid = event.get("worker_id")
+            if not wid:
+                continue
+            row = workers.setdefault(
+                wid, {"template": "?", "status": "-", "tokens": "-", "seconds": "-", "summary": ""}
+            )
+            if kind == "worker_started":
+                row["template"] = event.get("template", "?")
+            elif kind == "worker_done":
+                row["status"] = event.get("status", "-")
+                budget = event.get("budget") or {}
+                spent, _ = (budget.get("tokens") or ["?", "?"])[:2]
+                seconds = (budget.get("seconds") or ["?", "?"])[0]
+                row["tokens"], row["seconds"] = spent, seconds
+            elif kind == "report":
+                row["summary"] = str((event.get("report") or {}).get("summary", ""))[:70]
+
+        lines = [f"{'worker':18} {'template':10} {'status':6} {'tokens':>7} {'sec':>7}  summary"]
+        for wid, row in workers.items():
+            lines.append(
+                f"{wid:18} {row['template']:10} {row['status']:6} {row['tokens']!s:>7} "
+                f"{row['seconds']!s:>7}  {row['summary']}"
+            )
+        return "\n".join(lines)
+
     def tree(self) -> str:
         children: dict[str | None, list[str]] = {}
         labels: dict[str, str] = {}

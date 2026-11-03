@@ -54,6 +54,7 @@ python -m forchat --workflow examples/workflows/minimal/workflow.json "目标"
 python -m forchat --tools          # 能力工具（含 MCP）
 python -m forchat --skills         # 技能
 python -m forchat --mcp            # 连 MCP 服务端
+python -m forchat --inspect .runs/<run>   # 复查一次历史运行（树 + 每个 worker 的消耗与摘要）
 ```
 
 ## 三层
@@ -123,6 +124,19 @@ def upper(text: str) -> str:
 ## MCP
 
 `mcp_servers.json` 声明服务端；工具名带 `mcp__<server>__<tool>` 前缀，远端工具走原始参数 JSON（`raw_caller`），因为远端 schema 可能嵌套。只支持 stdio + tools 能力。
+
+服务端崩溃或超时会自动重启一次再重试；生命周期由 CLI 显式管理（不再依赖 `atexit`）。
+
+## 安全护栏
+
+`forchat/policy.py` 在工具执行前做确定性检查，CLI 默认启用：
+
+- 路径跑出项目根（`../` 逃逸、绝对路径指向别处）直接拒绝
+- `.env` / `.git` / 私钥 / 证书后缀直接拒绝
+- `run_python` 只能执行 `skills/` 与 `examples/` 下的脚本
+
+它**不是沙箱**：不防任意代码执行，真正的隔离（容器、cgroup、只读挂载）属于部署层。
+被拒时返回错误回执给模型，不中断整个运行。
 
 ## 学习路径
 

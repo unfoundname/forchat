@@ -12,12 +12,11 @@
 """
 from __future__ import annotations
 
-import atexit
 import json
 from pathlib import Path
 
 from . import registry
-from .mcp import MCPClient
+from .mcp import MCPClient, MCPError
 
 CONFIG_PATH = Path("mcp_servers.json")
 _clients: list[MCPClient] = []
@@ -37,7 +36,12 @@ def register_server_tool(server: str, client: MCPClient, spec: dict) -> str:
             raise ValueError(f"参数不是合法 JSON（{exc}）") from exc
         if not isinstance(args, dict):
             raise ValueError("arguments 必须是 JSON 对象")
-        return _client.call_tool(_name, args)
+        try:
+            return _client.call_tool(_name, args)
+        except MCPError:
+            # 子进程崩了/超时：重启一次再试，失败就把异常交给 registry 变成错误回执
+            _client.restart()
+            return _client.call_tool(_name, args)
 
     registry.register_external(exposed, description, parameters, caller)
     return exposed
@@ -89,8 +93,6 @@ def connect_from_config(config_path: Path | str | None = None) -> list[MCPClient
         for tool_name in registered:
             print(f"[mcp]   - {tool_name}")
 
-    if _clients:
-        atexit.register(close_all)
     return _clients
 
 

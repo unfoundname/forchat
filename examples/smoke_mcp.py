@@ -25,6 +25,8 @@ def main() -> int:
     print("add(2, 40) ->", client.call_tool("add", {"a": 2, "b": 40}))
     print("echo('hi')  ->", client.call_tool("echo", {"text": "hi"}))
     print("add 缺参数  ->", client.call_tool("add", {"a": 1}))
+    client.restart()
+    print("重启后 add  ->", client.call_tool("add", {"a": 3, "b": 4}))
     client.close()
 
     print("\n== 桥接层（经 registry.execute）==")

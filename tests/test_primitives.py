@@ -404,6 +404,87 @@ def test_read_worker_report() -> None:
     assert data["unresolved"] == ["x"]
 
 
+def test_policy_path_guard() -> None:
+    from forchat.policy import Policy
+
+    root = tmpdir()
+    (root / "ok.txt").write_text("x", encoding="utf-8")
+    (root / ".env").write_text("SECRET=1", encoding="utf-8")
+    (root / "skills" / "demo").mkdir(parents=True)
+    (root / "skills" / "demo" / "a.py").write_text("print(1)", encoding="utf-8")
+    policy = Policy(root)
+
+    assert policy.check("read", json.dumps({"path": "ok.txt"})) is None
+    assert "越界" in (policy.check("read", json.dumps({"path": "../x.txt"})) or "")
+    assert policy.check("read", json.dumps({"path": ".env"})) is not None
+    assert policy.check("run_python", json.dumps({"script": "ok.py"})) is not None
+    assert policy.check("run_python", json.dumps({"script": "skills/demo/a.py"})) is None
+
+
+def test_runtime_guard_blocks_tool() -> None:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["write_note", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("write_note", {"key": "k", "value": "v"})]),
+                tool_chunks([("report", {"summary": "ok"})]),
+            ]
+        }
+    )
+    runtime = Runtime(
+        workflow,
+        FakeProvider(responder),
+        tmpdir(),
+        guard=lambda name, args: "测试拒绝" if name == "write_note" else None,
+    )
+    root = runtime.start("任务")
+
+    denied = runtime.log.query(type="tool_denied")
+    assert denied and "测试拒绝" in denied[0]["reason"]
+    assert root.status == "done"
+
+
+def test_scheduler_concurrency_limit() -> None:
+    from forchat.primitives.scheduler import Scheduler
+
+    scheduler = Scheduler(max_concurrent=1)
+    order: list[str] = []
+
+    def job(index: int) -> None:
+        order.append(f"start{index}")
+        time.sleep(0.03)
+        order.append(f"end{index}")
+
+    futures = [scheduler.submit(job, index) for index in range(3)]
+    for future in futures:
+        future.result()
+    scheduler.shutdown()
+
+    assert order == ["start0", "end0", "start1", "end1", "start2", "end2"], order
+    assert scheduler.stats()["peak_running"] == 1
+
+
+def test_replay_summary() -> None:
+    workflow = WorkflowDef.load(MINIMAL)
+    responder = TemplateResponder(
+        {
+            "root": [tool_chunks([("report", {"summary": "完成"})])],
+            "coder": [tool_chunks([("report", {"summary": "子完成"})])],
+            "reviewer": [tool_chunks([("report", {"summary": "审查通过"})])],
+        }
+    )
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+    summary = Replay(runtime.log).summary()
+    assert "n001-root" in summary
+    assert "root" in summary and "done" in summary
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -426,6 +507,10 @@ def main() -> int:
         ("on_report hook", test_on_report_hook),
         ("默认不限轮数", test_unlimited_rounds_by_default),
         ("父 worker 读子报告", test_read_worker_report),
+        ("policy 路径护栏", test_policy_path_guard),
+        ("运行时执行护栏", test_runtime_guard_blocks_tool),
+        ("调度器并发上限", test_scheduler_concurrency_limit),
+        ("replay summary", test_replay_summary),
     ]
     failed = 0
     for name, fn in checks:
