@@ -14,7 +14,7 @@
       "can_spawn": ["coder"],
       "max_rounds": 3,
       "tools": ["spawn", "report", "read_state", "write_note"],
-      "budget": {"tokens": 20000, "wall_seconds": 600, "cost_usd": 1.0},
+      "budget": {"tokens": 20000, "wall_seconds": 600},
       "hooks": {"on_done": [{"action": "snapshot"}]}
     },
     "coder": {

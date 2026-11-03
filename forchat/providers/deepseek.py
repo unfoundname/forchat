@@ -19,10 +19,12 @@ class DeepSeekProvider:
         api_key: str | None = None,
         base_url: str = "https://api.deepseek.com",
         thinking: bool = True,
+        request_timeout: float = 600.0,
     ) -> None:
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY")
         self.base_url = base_url
         self.thinking = thinking
+        self.request_timeout = request_timeout
         self._client: Any = None
 
     def _client_or_raise(self) -> Any:
@@ -33,7 +35,9 @@ class DeepSeekProvider:
                 from openai import OpenAI      # 延迟 import：没有 SDK 也能跑假 provider
             except ImportError as exc:
                 raise RuntimeError("缺少 openai SDK：pip install openai") from exc
-            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            self._client = OpenAI(
+                api_key=self.api_key, base_url=self.base_url, timeout=self.request_timeout
+            )
         return self._client
 
     def stream(
@@ -43,6 +47,8 @@ class DeepSeekProvider:
             "model": model if model not in ("", "fake") else DEFAULT_MODEL,
             "messages": messages,
             "stream": True,
+            # 让服务端在最后一帧带 usage，否则预算只能靠字符数估算
+            "stream_options": {"include_usage": True},
         }
         if tools:
             kwargs["tools"] = tools

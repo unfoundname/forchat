@@ -8,46 +8,42 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-Status = Literal["pending", "running", "waiting", "done", "failed", "killed"]
+Status = Literal["pending", "running", "done", "failed"]
 
 
 @dataclass
 class Budget:
-    """token / 墙钟 / 成本 三元预算。用完即判废，由运行时强制执行。"""
+    """token / 墙钟 二元预算。用完即判废，由运行时强制执行。
+
+    没有 cost 字段：provider 不返回金额，记一个永远是 0 的成本只会误导。
+    等真的接入计费（有价目表）再加。
+    """
 
     tokens: int = 200_000
     wall_seconds: float = 1800.0
-    cost_usd: float = 5.0
     spent_tokens: int = 0
     spent_seconds: float = 0.0
-    spent_cost: float = 0.0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "Budget":
         data = data or {}
-        known = {"tokens", "wall_seconds", "cost_usd"}
+        known = {"tokens", "wall_seconds"}
         unknown = set(data) - known
         if unknown:
             raise ValueError(f"budget 里有未知字段：{sorted(unknown)}")
         return cls(**{k: data[k] for k in known if k in data})
 
-    def charge(self, tokens: int = 0, seconds: float = 0.0, cost: float = 0.0) -> None:
+    def charge(self, tokens: int = 0, seconds: float = 0.0) -> None:
         self.spent_tokens += max(tokens, 0)
         self.spent_seconds += max(seconds, 0.0)
-        self.spent_cost += max(cost, 0.0)
 
     def exhausted(self) -> bool:
-        return (
-            self.spent_tokens >= self.tokens
-            or self.spent_seconds >= self.wall_seconds
-            or self.spent_cost >= self.cost_usd
-        )
+        return self.spent_tokens >= self.tokens or self.spent_seconds >= self.wall_seconds
 
     def snapshot(self) -> dict[str, Any]:
         return {
             "tokens": [self.spent_tokens, self.tokens],
             "seconds": [round(self.spent_seconds, 3), self.wall_seconds],
-            "cost_usd": [round(self.spent_cost, 4), self.cost_usd],
         }
 
 
@@ -62,7 +58,7 @@ class Report:
     decisions: list[str] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
-    cost: dict[str, Any] = field(default_factory=dict)
+    budget: dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,7 +70,7 @@ class Report:
             "decisions": self.decisions,
             "unresolved": self.unresolved,
             "evidence": self.evidence,
-            "cost": self.cost,
+            "budget": self.budget,
             "created_at": self.created_at,
         }
 

@@ -106,21 +106,44 @@ class Runtime:
 
         self.max_depth = int(workflow.limits.get("max_depth", 3))
         self.max_workers = int(workflow.limits.get("max_workers", 16))
+        self.max_wall_seconds = float(workflow.limits.get("max_wall_seconds", 3600))
+        self.run_deadline: float | None = None
         self.scheduler = Scheduler(
             max_concurrent or int(workflow.limits.get("max_concurrent", 2))
         )
 
-        self.state: dict[str, Any] = {}
+        # plan / 笔记：落在磁盘上，重启或续跑时读回来；不靠对话记忆
+        self.state_path = self.dir / "state.json"
+        self.state: dict[str, Any] = self._load_state()
         self.workers: dict[str, WorkerInstance] = {}
         self._lock = threading.RLock()
         self._seq = 0
         self.started_at = time.time()
 
+    # ------------------------------------------------------------------ 状态
+    def _load_state(self) -> dict[str, Any]:
+        if not self.state_path.is_file():
+            return {}
+        try:
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _save_state(self) -> None:
+        tmp = self.state_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(self.state_path)
+
+    def _deadline_exceeded(self) -> bool:
+        return self.run_deadline is not None and time.time() > self.run_deadline
+
     # ------------------------------------------------------------------ 入口
     def start(self, task: str, template: str | None = None) -> WorkerInstance | None:
+        self.run_deadline = time.time() + self.max_wall_seconds
         root = self._create_worker(template or self.wf.entry, task, parent=None, depth=0)
         if root is None:
-            raise RuntimeError("根 worker创建失败，检查 workflow 配置")
+            raise RuntimeError("根 worker 创建失败，检查 workflow 配置")
 
         status = "done"
         try:
@@ -147,6 +170,11 @@ class Runtime:
                 self.log.append("spawn_rejected", reason="unknown_template", template=template,
                                 parent=parent.id if parent else None)
                 return None
+            if self._deadline_exceeded():
+                self.log.append("spawn_rejected", reason="wall_clock", template=template,
+                                parent=parent.id if parent else None,
+                                limit=self.max_wall_seconds)
+                return None
             if depth > self.max_depth:
                 self.log.append("spawn_rejected", reason="max_depth", template=template,
                                 parent=parent.id if parent else None, depth=depth)
@@ -166,7 +194,7 @@ class Runtime:
                 parent_id=parent.id if parent else None,
                 depth=depth,
                 budget=Budget(**{k: getattr(tpl.budget, k) for k in
-                                 ("tokens", "wall_seconds", "cost_usd")}),
+                                 ("tokens", "wall_seconds")}),
             )
             self.workers[worker_id] = worker
         self.log.append("worker_created", worker_id=worker_id, template=template, depth=depth,
@@ -182,8 +210,19 @@ class Runtime:
 
         messages = self._initial_messages(worker, tpl)
         reason = "max_rounds"
+        last_charge = started
 
         for rnd in range(1, tpl.max_rounds + 1):
+            # 墙钟要按轮次记账，否则 wall_seconds 只有在 worker 结束后才生效
+            now = time.time()
+            worker.budget.charge(seconds=now - last_charge)
+            last_charge = now
+
+            if self._deadline_exceeded():
+                reason = "wall_clock"
+                self.log.append("run_expired", worker_id=worker.id,
+                                limit=self.max_wall_seconds)
+                break
             if worker.budget.exhausted():
                 reason = "budget"
                 self.log.append("budget_exhausted", worker_id=worker.id, budget=worker.budget.snapshot())
@@ -218,15 +257,16 @@ class Runtime:
                 reason = "stop"
                 break
 
-        worker.budget.charge(seconds=time.time() - started)
-        self._finish(worker, reason)
+        worker.budget.charge(seconds=time.time() - last_charge)
+        self._finish(worker, reason, reported=worker.report is not None)
 
-    def _finish(self, worker: WorkerInstance, reason: str) -> None:
+    def _finish(self, worker: WorkerInstance, reason: str, reported: bool) -> None:
         if worker.report is None:
             worker.report = self._fallback_report(worker, "")
-        worker.report.status = "done" if reason in ("stop", "max_rounds") else "failed"
-        worker.report.cost = worker.budget.snapshot()
-        worker.status = "done" if worker.report.status == "done" else "failed"
+        # 只有真的调用过 report 才算完成；跑满轮次/超预算/只说话不交报告都不算
+        worker.report.status = "done" if reported else "failed"
+        worker.report.budget = worker.budget.snapshot()
+        worker.status = "done" if reported else "failed"
         self.log.append(
             "worker_done",
             worker_id=worker.id,
@@ -345,6 +385,7 @@ class Runtime:
             unresolved=[str(u) for u in args.get("unresolved") or []],
             evidence=[str(e) for e in args.get("evidence") or []],
         )
+        self._run_hooks(worker, "on_report")
         return "report 已记录"
 
     def _tool_read_state(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
@@ -354,7 +395,11 @@ class Runtime:
         return json.dumps(self.state, ensure_ascii=False)
 
     def _tool_write_note(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
-        self.state[str(args.get("key"))] = args.get("value")
+        key = str(args.get("key"))
+        if not key or key == "None":
+            return "错误：write_note 需要 key"
+        self.state[key] = args.get("value")
+        self._save_state()
         return "已写入"
 
     # ------------------------------------------------------------------ hooks

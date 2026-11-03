@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -35,7 +35,7 @@ def tmpdir() -> Path:
 
 # ---------------------------------------------------------------- 原语测试
 def test_budget() -> None:
-    budget = Budget(tokens=10, wall_seconds=5, cost_usd=1)
+    budget = Budget(tokens=10, wall_seconds=5)
     budget.charge(tokens=9)
     assert not budget.exhausted()
     budget.charge(tokens=2)
@@ -281,6 +281,80 @@ def test_skill_mounted_into_prompt() -> None:
     assert "已挂载技能" in system and "BODY-demo" in system, system
 
 
+def test_wall_clock_fence() -> None:
+    """整轮运行的墙钟上限：超时后不再接受新的派生。"""
+    workflow = WorkflowDef.load(MINIMAL)
+    runtime = Runtime(
+        workflow,
+        FakeProvider(TemplateResponder({"root": [tool_chunks([("report", {"summary": "x"})])]})),
+        tmpdir(),
+    )
+    runtime.run_deadline = time.time() - 1
+    assert runtime._create_worker("coder", "太晚了", None, 1) is None
+    rejected = runtime.log.query(type="spawn_rejected")
+    assert rejected and rejected[0]["reason"] == "wall_clock"
+    runtime.scheduler.shutdown()
+
+
+def test_state_persisted_and_reloaded() -> None:
+    """plan/笔记落盘：同一个 run 目录重新打开能读回。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["write_note", "report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    run_dir = tmpdir()
+    responder = TemplateResponder(
+        {
+            "root": [
+                tool_chunks([("write_note", {"key": "plan", "value": "三步走"})]),
+                tool_chunks([("report", {"summary": "写完了"})]),
+            ]
+        }
+    )
+    Runtime(workflow, FakeProvider(responder), run_dir).start("写下 plan")
+
+    state_file = Path(run_dir) / "state.json"
+    assert state_file.is_file()
+    assert json.loads(state_file.read_text(encoding="utf-8"))["plan"] == "三步走"
+
+    reloaded = Runtime(workflow, FakeProvider([]), run_dir)
+    assert reloaded.state["plan"] == "三步走"
+
+
+def test_no_report_means_failed() -> None:
+    """只说话不交报告 = 未完成（不是 done）。"""
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    text_only = [
+        {"choices": [{"delta": {"content": "我做完了，但没调用 report"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+    ]
+    runtime = Runtime(workflow, FakeProvider([text_only]), tmpdir())
+    root = runtime.start("任务")
+    assert root.status == "failed"
+    assert "未调用 report" in (root.report.summary or "")
+
+
+def test_on_report_hook() -> None:
+    raw = json.loads(MINIMAL.read_text(encoding="utf-8"))
+    raw["workers"]["root"]["tools"] = ["report"]
+    raw["workers"]["root"]["can_spawn"] = []
+    raw["workers"]["root"]["hooks"] = {"on_report": [{"action": "notify"}]}
+    workflow = WorkflowDef.from_dict(raw, base_dir=MINIMAL.parent)
+
+    responder = TemplateResponder({"root": [tool_chunks([("report", {"summary": "ok"})])]})
+    runtime = Runtime(workflow, FakeProvider(responder), tmpdir())
+    runtime.start("任务")
+    hooks = [e for e in runtime.log.query(type="hook_action") if e.get("hook") == "on_report"]
+    assert hooks, runtime.log.query(type="hook_action")
+
+
 def main() -> int:
     print("原语自检：")
     checks = [
@@ -297,6 +371,10 @@ def main() -> int:
         ("能力工具桥接：registry 的 read", test_registry_bridge_read),
         ("workflow 拒绝未知技能", test_workflow_rejects_unknown_skill),
         ("技能挂载进系统提示", test_skill_mounted_into_prompt),
+        ("围栏：整轮墙钟", test_wall_clock_fence),
+        ("状态落盘与重载", test_state_persisted_and_reloaded),
+        ("未调 report = 失败", test_no_report_means_failed),
+        ("on_report hook", test_on_report_hook),
     ]
     failed = 0
     for name, fn in checks:
