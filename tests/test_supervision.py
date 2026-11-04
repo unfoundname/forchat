@@ -86,7 +86,7 @@ def test_watchdog_review_does_not_stop_by_default() -> None:
     provider = FakeProvider(TemplateResponder({"root": [stream]}), delay=0.3)
     old_seconds = os.environ.get("FORCHAT_STUCK_SECONDS")
     old_action = os.environ.get("FORCHAT_STUCK_ACTION")
-    os.environ["FORCHAT_STUCK_SECONDS"] = "0.3"
+    os.environ["FORCHAT_STUCK_SECONDS"] = "0.2"
     os.environ.pop("FORCHAT_STUCK_ACTION", None)
     try:
         runtime = Runtime(workflow, provider, tmpdir())

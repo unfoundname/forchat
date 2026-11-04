@@ -307,7 +307,7 @@ def test_stuck_watchdog_auto_stops() -> None:
     provider = FakeProvider(TemplateResponder({"root": [chunks]}), delay=0.3)
     old_seconds = os.environ.get("FORCHAT_STUCK_SECONDS")
     old_action = os.environ.get("FORCHAT_STUCK_ACTION")
-    os.environ["FORCHAT_STUCK_SECONDS"] = "0.3"
+    os.environ["FORCHAT_STUCK_SECONDS"] = "0.2"
     os.environ["FORCHAT_STUCK_ACTION"] = "stop"
     try:
         runtime = Runtime(workflow, provider, tmpdir())
