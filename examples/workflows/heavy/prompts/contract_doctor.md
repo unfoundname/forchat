@@ -2,8 +2,9 @@
 
 ## 扫描
 
-1. `read_contracts` 看当前 key/version/status/checks；
-2. 读近期 diff/分支（`git log --oneline`、`git diff main...integration`）；
+1. `read_contracts` 看当前 key/version/status/checks/covers；
+2. 跑 `check_contract_coverage` 看 surface 里哪些项没被契约覆盖；
+3. 读近期 diff/分支（`git log --oneline`、`git diff main...integration`）；
 3. 对照实际代码与响应，找：
    - 代码里有、契约里没有的接口/字段（缺口）；
    - 契约里有、代码里没有的（漂移/未实现）；

@@ -215,6 +215,12 @@ TOOL_SPECS: dict[str, dict] = {
                         "enum": ["draft", "frozen", "deprecated"],
                         "description": "默认 draft；准备让下一波并行实现时再 frozen",
                     },
+                    "covers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "这条契约覆盖的 surface id（路由/文件 glob），"
+                                       "用于 report 前的覆盖检查",
+                    },
                     "change_reason": {"type": "string", "description": "为什么写/改这条契约"},
                     "replace": {"type": "boolean", "description": "确实要改时传 true（会升版本）"},
                 },
@@ -235,6 +241,7 @@ TOOL_SPECS: dict[str, dict] = {
                     "reason": {"type": "string"},
                     "content": {"type": "string", "description": "完整的新契约内容"},
                     "checks": {"type": "array", "items": {"type": "object"}},
+                    "covers": {"type": "array", "items": {"type": "string"}},
                     "affected": {"type": "array", "items": {"type": "string"},
                                  "description": "受影响的切片/worker/文件"},
                     "status": {"type": "string", "enum": ["draft", "frozen", "deprecated"]},
@@ -257,6 +264,21 @@ TOOL_SPECS: dict[str, dict] = {
                     "note": {"type": "string"},
                 },
                 "required": ["change_id", "approve"],
+            },
+        },
+    },
+    "check_contract_coverage": {
+        "type": "function",
+        "function": {
+            "name": "check_contract_coverage",
+            "description": "检查 surface 清单（docs/surface.json）里每个路由/文件是否被某条契约的 "
+                           "covers 覆盖，或列在 exceptions 里；report 前 require_coverage 会自动跑。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "surface_path": {"type": "string",
+                                     "description": "默认 docs/surface.json"},
+                },
             },
         },
     },

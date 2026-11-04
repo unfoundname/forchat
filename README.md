@@ -272,6 +272,10 @@ agent 在系统提示里都能看到它，不必靠对话记忆。
 （事件 `contract_violation` / `contract_verified`，metrics `forchat_contract_violations_total`）。
 也可以随时调 `verify_contract` 主动校验。这样"契约"不只是提示词，而是可被机器判定、可演进的门禁。
 
+**覆盖矩阵**：契约有 `covers`（路由/文件 glob）；项目根 `docs/surface.json` 列全部 surface 项与
+`exceptions`。模板写 `"require_coverage": true` 后，`report` 前会跑 `check_contract_coverage`：
+任何 surface 项既没被契约覆盖、也不在 exceptions 里，就拒绝报告。
+
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 
 **轮数默认不限**：协调型 worker 跑几十上百轮是正常的，真正的闸是预算（tokens / wall_seconds）

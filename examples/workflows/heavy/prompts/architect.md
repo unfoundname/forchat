@@ -7,8 +7,10 @@
    - `checks/api_contract.py`：校验契约里的路由存在、关键响应字段类型正确；
    - `checks/e2e.py`：启动服务 → 走主流程 → 关闭；不依赖外网；
 3. 按契约生成 **stubs**（空实现/假数据），让 coder 可以先对着桩并行；
-4. `docs/ARCH.md`：模块边界、数据流、切片分工；
-5. `docs/open-questions.md`：契约没覆盖、需要 root 决策的点。
+4. `docs/surface.json`：所有路由/文件的**覆盖清单**（items + exceptions），供
+   `check_contract_coverage` 和 root 的 `require_coverage` 门禁使用；
+5. `docs/ARCH.md`：模块边界、数据流、切片分工；
+6. `docs/open-questions.md`：契约没覆盖、需要 root 决策的点。
 
 ## 约束
 

@@ -16,7 +16,7 @@ BUILTIN_TOOLS = {
     "spawn", "report", "read_state", "write_note", "write_artifact",
     "read_worker_report", "inspect_worker", "wait_workers", "stop_worker",
     "restart", "write_fact", "read_facts", "write_contract", "read_contracts", "verify_contract",
-    "propose_contract_change", "decide_contract_change",
+    "propose_contract_change", "decide_contract_change", "check_contract_coverage",
 }
 _TOP_KEYS = {"name", "version", "entry", "limits", "workers"}
 _LIMIT_KEYS = {
@@ -25,7 +25,7 @@ _LIMIT_KEYS = {
 }
 _WORKER_KEYS = {
     "role", "role_file", "can_spawn", "max_rounds", "tools", "skills", "budget", "hooks",
-    "scope", "retries", "require_checks", "require_contracts",
+    "scope", "retries", "require_checks", "require_contracts", "require_coverage",
 }
 
 
@@ -47,6 +47,7 @@ class WorkerTemplate:
     retries: int = 0                                 # 仅对"瞬时错误"重跑该 worker，默认 0
     require_checks: bool = False                     # true = report 前必须 run_checks 全 PASS
     require_contracts: bool = False                  # true = report 前必须所有契约 hash+checks 通过
+    require_coverage: bool = False                   # true = report 前 surface 必须被契约 covers 覆盖
 
 
 @dataclass
@@ -236,6 +237,10 @@ class WorkflowDef:
         if not isinstance(require_contracts, bool):
             errors.append(f"worker {name} 的 require_contracts 必须是布尔值")
 
+        require_coverage = spec.get("require_coverage", False)
+        if not isinstance(require_coverage, bool):
+            errors.append(f"worker {name} 的 require_coverage 必须是布尔值")
+
         try:
             budget = Budget.from_dict(spec.get("budget"))
         except ValueError as exc:
@@ -273,5 +278,6 @@ class WorkflowDef:
                 retries=int(spec.get("retries") or 0),
                 require_checks=bool(spec.get("require_checks", False)),
                 require_contracts=bool(spec.get("require_contracts", False)),
+                require_coverage=bool(spec.get("require_coverage", False)),
             )
         return errors

@@ -38,7 +38,7 @@
 - **restart**：worker 自己调用、重启自己：同一个 WorkerInstance、清空对话、事实保留（同模板/范围/任务，可换任务）；上下文涣散时用它。
 - **suspect（待视察）**：心跳超时的 worker/远程任务只被标记，不自动 stop/restart；父 agent 用 `inspect_worker` 看任务/预算/最近事件，确认偏离后才重启、关闭或显式重派。
 - **事实（fact）**：每个 worker 实例一份硬结论，落盘 `facts/<worker-id>.json`，重启/新 agent 的系统提示里自动带（上限 20k 字符）；不是全 run 共享。
-- **契约（contract）**：`write_contract` 写接口约定并注入所有提示词，状态 draft/frozen/deprecated；可带 `checks`。变更走 `propose_contract_change` → root `decide_contract_change` 升版本；`report` 声明 `contracts_used`，版本不一致拒绝；`require_contracts` 时机器校验 hash + checks。
+- **契约（contract）**：`write_contract` 写接口约定并注入所有提示词，状态 draft/frozen/deprecated；可带 `checks` 与 `covers`。变更走 `propose_contract_change` → root `decide_contract_change` 升版本；`report` 声明 `contracts_used`，版本不一致拒绝；`require_contracts` 校验 hash+checks；`require_coverage` 对照 `docs/surface.json` 检查覆盖矩阵。
 - **成本**：按 `pricing.json` 的价目表把 prompt/completion token 换算成美元；没有价目表时明确为"未知"，不记 0。
 - **围栏（fence）**：能力限制，优先于事后熔断。递归靠 `can_spawn` 为空来杜绝，不是靠层数。
 - **授权范围（scope）**：worker 只能修改的目录列表（相对项目根）。空 = 整个项目根；由父 worker 在 `spawn(paths=...)` 时授予，不能超出自己范围。

@@ -190,6 +190,35 @@ def test_report_contract_version_mismatch() -> None:
     assert runtime.log.query(type="contract_version_mismatch")
 
 
+def test_contract_coverage_gate() -> None:
+    runtime, root, _coder, workflow = _runtime_with_workers()
+    tpl = workflow.workers["root"]
+    runtime._tool_write_contract(root, tpl, {
+        "key": "api", "content": "x", "status": "frozen",
+        "covers": ["GET /api/videos", "src/pages/*.tsx"],
+    })
+    surface = tmpdir() / "surface.json"
+    surface.write_text(json.dumps({
+        "items": ["GET /api/videos", "src/pages/home.tsx"],
+        "exceptions": [],
+    }), encoding="utf-8")
+    assert runtime._check_coverage(str(surface)) is None
+
+    surface.write_text(json.dumps({
+        "items": ["GET /api/videos", "GET /api/legacy"],
+        "exceptions": [],
+    }), encoding="utf-8")
+    problem = runtime._check_coverage(str(surface))
+    assert problem and "GET /api/legacy" in problem, problem
+
+    surface.write_text(json.dumps({
+        "items": ["GET /api/videos", "GET /api/legacy"],
+        "exceptions": ["GET /api/legacy"],
+    }), encoding="utf-8")
+    assert runtime._check_coverage(str(surface)) is None
+    assert runtime.log.query(type="contract_coverage_checked")
+
+
 def main() -> int:
     checks = [
         ("契约 hash + checks 通过", test_contract_hash_and_checks_pass),
@@ -197,6 +226,7 @@ def main() -> int:
         ("契约篡改被检测", test_contract_tamper_detected),
         ("契约变更协议", test_contract_change_protocol),
         ("report 契约版本门禁", test_report_contract_version_mismatch),
+        ("契约覆盖矩阵", test_contract_coverage_gate),
     ]
     return run("契约机器校验自检", checks)
 

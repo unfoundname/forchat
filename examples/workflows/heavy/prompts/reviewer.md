@@ -8,6 +8,8 @@
    - coder 声明的 `contracts_used` 版本是否等于当前版本；
    - 是否出现契约里没有的接口/字段/错误码；
    - 是否有 approved 的 `contract_change` 支撑这些差异；
+   - 新路由/文件是否已加入 `docs/surface.json`；
+   - 跑一次 `check_contract_coverage`；
    - 没有批准变更却偏离 = **FAIL（契约漂移）**；
 4. 自己跑验证（`run_python(cwd=".worktrees/<slice>")`）：
    - 至少跑 coder 声称的测试命令；

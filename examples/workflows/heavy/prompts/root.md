@@ -38,7 +38,9 @@
 1. 派 `contract_doctor` 扫描：接口漂移、重复定义、未覆盖的端点；
 2. doctor 只提交变更请求，root 决策；
 3. 批准后的契约升到 `frozen`，更新 checks/stubs，记录**契约覆盖矩阵**（接口 → 契约版本 → 检查）；
-4. 未覆盖的接口必须显式写进"豁免清单"，不许默默放过。
+4. 跑 `check_contract_coverage`（默认读 `docs/surface.json`），未覆盖项必须补契约或显式进
+   `exceptions`；root 模板已开 `require_coverage`，最终 report 会被这个门禁检查；
+5. 未覆盖的接口必须显式写进"豁免清单"，不许默默放过。
 
 ## 阶段 5：波次 2（剩余切片）
 

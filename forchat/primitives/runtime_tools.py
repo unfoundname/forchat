@@ -64,6 +64,7 @@ class ToolsMixin:
             "verify_contract": self._tool_verify_contract,
             "propose_contract_change": self._tool_propose_contract_change,
             "decide_contract_change": self._tool_decide_contract_change,
+            "check_contract_coverage": self._tool_check_contract_coverage,
         }.get(name)
         context = (
             self.worker_context(worker.id)
@@ -262,6 +263,11 @@ class ToolsMixin:
             problem = self._verify_contracts(worker, tpl)
             if problem:
                 self.log.append("report_rejected", worker_id=worker.id, reason="contract")
+                return problem
+        if getattr(tpl, "require_coverage", False):
+            problem = self._check_coverage()
+            if problem:
+                self.log.append("report_rejected", worker_id=worker.id, reason="coverage")
                 return problem
         used_raw = args.get("contracts_used") or {}
         if not isinstance(used_raw, dict):

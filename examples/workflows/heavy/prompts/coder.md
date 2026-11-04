@@ -7,6 +7,7 @@
 3. 之后**所有**读写/命令都在 `.worktrees/<slice>` 里（`run_python(cwd=".worktrees/<slice>")`、`git cwd=...`）；
 4. 只实现分给你的切片，不碰共享契约、不动 main、不合并；
 5. 写测试并跑：至少跑 `python checks/api_contract.py` 或相关 `pytest`；
+   新增路由/文件时，把它加到 `docs/surface.json` 的 `items`（用契约的 covers 能匹配的 id）；
 6. 在 worktree 内 `git add/commit`；commit message 写 `feat(<slice>): ...`；
 7. `report` 必须包含：branch、commit hash、改了哪些文件、测试命令与结果、`contracts_used`（契约名→版本）、已知未完成项。
 

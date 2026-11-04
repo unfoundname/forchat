@@ -1,9 +1,11 @@
 """ContractMixin：契约写入、读取、变更提案/决策、hash + checks 校验。"""
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import time
+from pathlib import Path
 
 from .types import WorkerInstance
 from .workflow import WorkerTemplate
@@ -13,7 +15,8 @@ class ContractMixin:
 
     def _apply_contract(self, worker: WorkerInstance, key: str, content: str,
                         checks: list[dict], status: str, change_reason: str,
-                        replace: bool, owner: str | None = None) -> str:
+                        replace: bool, owner: str | None = None,
+                        covers: list[str] | None = None) -> str:
         contracts = self.state.setdefault("contracts", {})
         existing = contracts.get(key) or {}
         if existing and not replace:
@@ -28,6 +31,7 @@ class ContractMixin:
             "owner": owner or worker.id,
             "sha256": hashlib.sha256(stored.encode("utf-8")).hexdigest(),
             "checks": checks,
+            "covers": covers or [],
             "change_reason": change_reason,
             "supersedes": existing.get("version") if existing else None,
         }
@@ -45,13 +49,17 @@ class ContractMixin:
         checks = args.get("checks") or []
         status = str(args.get("status") or "draft").strip().lower()
         reason = str(args.get("change_reason") or "").strip()
+        covers = args.get("covers") or []
         if not key or not content:
             return "错误：write_contract 需要 key 与 content"
         if status not in ("draft", "frozen", "deprecated"):
             return "错误：status 只能是 draft / frozen / deprecated"
         if not isinstance(checks, list) or any(not isinstance(item, dict) for item in checks):
             return "错误：checks 必须是对象数组（格式同 run_checks）"
-        return self._apply_contract(worker, key, content, checks, status, reason, replace)
+        if not isinstance(covers, list) or any(not isinstance(item, str) for item in covers):
+            return "错误：covers 必须是字符串数组（路由/文件 glob）"
+        return self._apply_contract(worker, key, content, checks, status, reason, replace,
+                                    covers=[str(c) for c in covers])
 
     def _tool_read_contracts(self, worker: WorkerInstance, tpl: WorkerTemplate, args: dict) -> str:
         contracts = self.state.get("contracts") or {}
@@ -60,6 +68,7 @@ class ContractMixin:
         lines = [
             f"- {key} v{item.get('version', 1)} [{item.get('status', 'draft')}] "
             f"owner={item.get('owner', '?')} checks={len(item.get('checks') or [])} "
+            f"covers={item.get('covers') or []} "
             f"sha={str(item.get('sha256', ''))[:8]}: {item.get('content', '')}"
             for key, item in contracts.items()
         ]
@@ -78,6 +87,7 @@ class ContractMixin:
         reason = str(args.get("reason") or "").strip()
         content = str(args.get("content") or "").strip()
         checks = args.get("checks") or []
+        covers = [str(c) for c in args.get("covers") or []]
         affected = [str(a) for a in args.get("affected") or []]
         status = str(args.get("status") or "frozen").strip().lower()
         if not key or not reason:
@@ -92,7 +102,8 @@ class ContractMixin:
         change_id = f"cc-{len(changes) + 1}"
         changes[change_id] = {
             "id": change_id, "key": key, "reason": reason, "content": content,
-            "checks": checks, "affected": affected, "target_status": status,
+            "checks": checks, "covers": covers, "affected": affected,
+            "target_status": status,
             "proposed_by": worker.id, "created_at": time.time(), "state": "pending",
         }
         self._save_state()
@@ -120,6 +131,7 @@ class ContractMixin:
                 worker, item["key"], item["content"], item.get("checks") or [],
                 item.get("target_status") or "frozen", item.get("reason", ""),
                 replace=True, owner=item.get("proposed_by"),
+                covers=item.get("covers") or [],
             )
             if not result.startswith("契约"):
                 return result
@@ -180,3 +192,56 @@ class ContractMixin:
         only = str(args.get("key") or "").strip() or None
         problem = self._verify_contracts(worker, tpl, only)
         return problem or "契约校验：PASS（hash 与 checks 全部通过）"
+
+    def _coverage_uncovered(self, surface_path: str) -> tuple[list[str], str | None]:
+        path = Path(surface_path)
+        if not path.is_file():
+            return [], f"错误：找不到 {surface_path}（architect 需要生成 surface 清单）"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return [], f"错误：surface 不可读：{exc}"
+        raw_items = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(raw_items, list):
+            return [], "错误：surface 需要 items 数组"
+        ids = []
+        for item in raw_items:
+            value = item.get("id") if isinstance(item, dict) else item
+            if value:
+                ids.append(str(value))
+        raw_exceptions = data.get("exceptions") if isinstance(data, dict) else []
+        exceptions = set()
+        for item in raw_exceptions or []:
+            value = item.get("id") if isinstance(item, dict) else item
+            if value:
+                exceptions.add(str(value))
+        patterns: list[str] = []
+        for item in (self.state.get("contracts") or {}).values():
+            if item.get("status") != "deprecated":
+                patterns.extend(str(p) for p in item.get("covers") or [])
+        uncovered = [
+            item_id for item_id in ids
+            if item_id not in exceptions
+            and not any(fnmatch.fnmatch(item_id, pattern) or item_id == pattern
+                        for pattern in patterns)
+        ]
+        return uncovered, None
+
+    def _check_coverage(self, surface_path: str = "docs/surface.json") -> str | None:
+        uncovered, error = self._coverage_uncovered(surface_path)
+        if error:
+            return error
+        if uncovered:
+            self.contract_violation_count += 1
+            self.log.append("contract_violation", reason="coverage",
+                            uncovered=uncovered[:20])
+            return ("错误：契约覆盖不足，以下 surface 项没有对应契约（也没有显式豁免）："
+                    + "; ".join(uncovered[:10]))
+        self.log.append("contract_coverage_checked", surface=surface_path, status="PASS")
+        return None
+
+    def _tool_check_contract_coverage(self, worker: WorkerInstance, tpl: WorkerTemplate,
+                                      args: dict) -> str:
+        surface = str(args.get("surface_path") or "docs/surface.json")
+        problem = self._check_coverage(surface)
+        return problem or f"契约覆盖：PASS（{surface}）"
