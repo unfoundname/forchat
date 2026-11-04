@@ -36,6 +36,12 @@ TOOL_SPECS: dict[str, dict] = {
                     "decisions": {"type": "array", "items": {"type": "string"}},
                     "unresolved": {"type": "array", "items": {"type": "string"}},
                     "evidence": {"type": "array", "items": {"type": "string"}},
+                    "contracts_used": {
+                        "type": "object",
+                        "description": "本次实现所依据的契约版本，例如 {\"api\": 2}；"
+                                       "版本与当前契约不一致会被拒绝",
+                        "additionalProperties": {"type": "integer"},
+                    },
                 },
                 "required": ["summary"],
             },
@@ -189,9 +195,10 @@ TOOL_SPECS: dict[str, dict] = {
         "type": "function",
         "function": {
             "name": "write_contract",
-            "description": "冻结一条跨模块契约（接口签名/数据格式/命令约定），写进运行状态并注入所有 agent 的提示词，"
-                           "不会被 compact 抹掉。默认写一次后不能再改，要改必须 replace=true。"
-                           "可附带可执行 checks；模板开 require_contracts 时 report 前必须全部 PASS。",
+            "description": "写一条契约（接口签名/数据格式/命令约定），注入所有 agent 的提示词，"
+                           "不会被 compact 抹掉。status=draft 表示还在演进；frozen 表示下一波依赖它；"
+                           "deprecated 表示已废弃。可附带可执行 checks；模板开 require_contracts 时 "
+                           "report 前必须全部 PASS。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -203,9 +210,53 @@ TOOL_SPECS: dict[str, dict] = {
                                        "[{name, script, args?, cwd?}]；约定只能放 .py",
                         "items": {"type": "object"},
                     },
-                    "replace": {"type": "boolean", "description": "确实要改时传 true"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["draft", "frozen", "deprecated"],
+                        "description": "默认 draft；准备让下一波并行实现时再 frozen",
+                    },
+                    "change_reason": {"type": "string", "description": "为什么写/改这条契约"},
+                    "replace": {"type": "boolean", "description": "确实要改时传 true（会升版本）"},
                 },
                 "required": ["key", "content"],
+            },
+        },
+    },
+    "propose_contract_change": {
+        "type": "function",
+        "function": {
+            "name": "propose_contract_change",
+            "description": "提交契约变更请求（任何 worker 可提）：必须带完整新 content、原因和影响切片；"
+                           "root 用 decide_contract_change 批准后才会升版本。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "content": {"type": "string", "description": "完整的新契约内容"},
+                    "checks": {"type": "array", "items": {"type": "object"}},
+                    "affected": {"type": "array", "items": {"type": "string"},
+                                 "description": "受影响的切片/worker/文件"},
+                    "status": {"type": "string", "enum": ["draft", "frozen", "deprecated"]},
+                },
+                "required": ["key", "reason", "content"],
+            },
+        },
+    },
+    "decide_contract_change": {
+        "type": "function",
+        "function": {
+            "name": "decide_contract_change",
+            "description": "root 专用：批准/拒绝一条契约变更；批准会升版本并更新 checks。"
+                           "拒绝要写 note（原因），让提案方知道下一步。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "change_id": {"type": "string"},
+                    "approve": {"type": "boolean"},
+                    "note": {"type": "string"},
+                },
+                "required": ["change_id", "approve"],
             },
         },
     },

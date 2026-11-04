@@ -13,10 +13,12 @@
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
-      "can_spawn": ["recon", "architect", "coder", "reviewer", "integrator", "fixer"],
+      "can_spawn": ["recon", "spike", "architect", "contract_doctor", "coder", "reviewer", "integrator", "fixer"],
       "tools": [
         "spawn", "wait_workers", "stop_worker", "inspect_worker",
-        "write_contract", "read_contracts", "write_note", "read_state",
+        "write_contract", "read_contracts", "verify_contract",
+        "propose_contract_change", "decide_contract_change",
+        "write_note", "read_state",
         "write_artifact", "read_worker_report", "run_checks", "git", "report"
       ],
       "budget": {"tokens": 30000000, "wall_seconds": 259200},
@@ -28,27 +30,46 @@
       "tools": ["web_fetch", "web_search", "read", "write_artifact", "write_note", "report"],
       "budget": {"tokens": 4000000, "wall_seconds": 7200}
     },
+    "spike": {
+      "role_file": "prompts/spike.md",
+      "can_spawn": [],
+      "tools": [
+        "read", "grep", "glob", "edit_file", "write_file", "run_python",
+        "git", "run_checks", "read_contracts", "write_note", "report"
+      ],
+      "budget": {"tokens": 8000000, "wall_seconds": 21600}
+    },
     "architect": {
       "role_file": "prompts/architect.md",
       "can_spawn": [],
       "tools": [
         "read", "grep", "glob", "edit_file", "write_file", "run_python",
-        "run_checks", "git", "write_artifact", "report"
+        "run_checks", "git", "read_contracts", "write_artifact", "report"
       ],
       "budget": {"tokens": 8000000, "wall_seconds": 21600}
+    },
+    "contract_doctor": {
+      "role_file": "prompts/contract_doctor.md",
+      "can_spawn": [],
+      "tools": [
+        "read", "grep", "read_contracts", "propose_contract_change",
+        "write_artifact", "report"
+      ],
+      "budget": {"tokens": 4000000, "wall_seconds": 14400}
     },
     "coder": {
       "role_file": "prompts/coder.md",
       "can_spawn": [],
       "tools": [
         "read", "grep", "glob", "edit_file", "write_file", "run_python",
-        "git", "run_checks", "read_state", "write_note", "report"
+        "git", "run_checks", "read_contracts", "verify_contract",
+        "propose_contract_change", "read_state", "write_note", "report"
       ],
       "budget": {"tokens": 10000000, "wall_seconds": 43200},
       "hooks": {
         "on_done": [{
           "spawn": "reviewer",
-          "task": "审查 coder {worker_id} 的分支与工作区：读 diff、跑测试，独立给结论",
+          "task": "审查 coder {worker_id} 的分支与工作区：读 diff、跑测试、核对契约漂移",
           "wait": false
         }]
       }
@@ -58,7 +79,8 @@
       "can_spawn": [],
       "tools": [
         "read", "grep", "glob", "run_python", "run_checks", "git",
-        "read_worker_report", "read_state", "write_artifact", "report"
+        "read_contracts", "verify_contract", "read_worker_report",
+        "read_state", "write_artifact", "report"
       ],
       "budget": {"tokens": 3000000, "wall_seconds": 7200}
     },

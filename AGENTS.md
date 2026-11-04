@@ -27,7 +27,7 @@ forchat/__main__.py   只做装配与展示，不含执行逻辑（执行只在 
 
 `Runtime` 按职责拆成 mixin（都 ≤ 500 行）：`runtime.py` 装配与调度、`runtime_worker.py` 执行循环、
 `runtime_tools.py` 工具、`runtime_state.py` 续跑/快照/metrics、`runtime_prompt.py` 提示词、
-`runtime_compact.py` compact、`runtime_specs.py` schema。
+`runtime_compact.py` compact、`runtime_contracts.py` 契约、`runtime_specs.py` schema。
 
 历史包袱已清：旧的单 agent 循环（`agent.py`）和草案契约层（`core/contracts.py`）都已删除，它们和原语层重复。
 

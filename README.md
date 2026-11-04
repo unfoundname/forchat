@@ -24,6 +24,7 @@ ForChat/
 │   │   ├── runtime.py          ★ Runtime：装配、调度、进程 worker、看门狗
 │   │   ├── runtime_worker.py   执行循环（唯一一份）+ 流式解析 + 收尾
 │   │   ├── runtime_compact.py  compact：归档 + 模型摘要 / 确定性兜底
+│   │   ├── runtime_contracts.py 契约：写入/变更提案/决策/hash+checks
 │   │   ├── runtime_tools.py    工具分发 + 运行时工具（spawn/report/facts/contracts/…）
 │   │   ├── runtime_state.py    续跑恢复 / plan / 追加式快照 / metrics
 │   │   ├── runtime_prompt.py   初始消息与兜底报告
@@ -260,14 +261,16 @@ examples/workflows/minimal/
 **事实库**是"重启也不丢"的那一层：`write_fact("构建命令", "pytest -q")` 之后，`restart`/`--resume` 出的
 agent 在系统提示里都能看到它，不必靠对话记忆。
 
-**契约冻结**：`write_contract("GET /api/videos", "返回 {items:[...]}")` 之后，这条接口约定会注入**所有**
-agent 的系统提示，**compact 也抹不掉**；默认写一次后不允许改，要改必须 `replace=true`（记版本号）。
-长程跨模块集成时用它防"摘要丢细节 → 接口漂移"。
+**契约生命周期**：`write_contract("GET /api/videos", "返回 {items:[...]}", status="draft")` 之后，
+契约会注入**所有** agent 的系统提示，**compact 也抹不掉**。状态分 `draft`（演进中）、`frozen`
+（下一波依赖）、`deprecated`（废弃）。契约缺漏是常态：任何 worker 可 `propose_contract_change`
+（带完整新内容 + 影响面），root 用 `decide_contract_change` 批准后升版本；coder 的 report 要声明
+`contracts_used`（key→版本），版本不一致会被拒绝。
 
 **机器校验**：契约可带 `checks`（格式同 `run_checks`），并自动记录内容 sha256；模板写
 `"require_contracts": true` 后，`report` 前会**重新算 hash + 跑 checks**，任一失败就拒绝报告
 （事件 `contract_violation` / `contract_verified`，metrics `forchat_contract_violations_total`）。
-也可以随时调 `verify_contract` 主动校验。这样"契约"不只是提示词，而是可被机器判定的门禁。
+也可以随时调 `verify_contract` 主动校验。这样"契约"不只是提示词，而是可被机器判定、可演进的门禁。
 
 `write_artifact` 写出的文件会自动进 `report.artifacts`，模型不必再手抄路径。
 

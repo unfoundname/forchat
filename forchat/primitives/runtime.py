@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .runtime_compact import CompactMixin
+from .runtime_contracts import ContractMixin
 from .runtime_prompt import PromptMixin
 from .runtime_remote import RemoteMixin
 from .runtime_state import StateMixin
@@ -28,7 +29,7 @@ from .types import Budget, Report, WorkerInstance
 from .workflow import WorkflowDef
 
 
-class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, WorkerMixin, RemoteMixin):
+class Runtime(StateMixin, PromptMixin, ToolsMixin, CompactMixin, ContractMixin, WorkerMixin, RemoteMixin):
 
     def __init__(
         self,

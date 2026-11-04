@@ -123,11 +123,80 @@ def test_contract_tamper_detected() -> None:
     assert root.status == "failed"
 
 
+def _runtime_with_workers():
+    from forchat.primitives.types import WorkerInstance
+
+    workflow = _workflow()
+    runtime = Runtime(
+        workflow, FakeProvider([]), tmpdir(),
+        external_tools={"run_checks": (SPEC, lambda _args: "验收总结果：PASS")},
+    )
+    root = WorkerInstance(id="root-1", template="root", task="t", status="running")
+    coder = WorkerInstance(id="n002-coder", template="root", task="t",
+                           parent_id="root-1", status="running")
+    runtime.workers = {root.id: root, coder.id: coder}
+    return runtime, root, coder, workflow
+
+
+def test_contract_change_protocol() -> None:
+    runtime, root, coder, workflow = _runtime_with_workers()
+    tpl = workflow.workers["root"]
+    runtime._tool_write_contract(root, tpl, {
+        "key": "api", "content": "v1", "status": "draft",
+        "checks": [{"name": "c", "script": "c.py"}],
+    })
+    assert runtime.state["contracts"]["api"]["status"] == "draft"
+
+    out = runtime._tool_propose_contract_change(coder, tpl, {
+        "key": "api", "reason": "缺少分页字段", "content": "v2 with page",
+        "affected": ["feat/list"], "status": "frozen",
+        "checks": [{"name": "c", "script": "c.py"}],
+    })
+    assert "已提交" in out, out
+    change_id = next(iter(runtime.state["contract_changes"]))
+
+    denied = runtime._tool_decide_contract_change(coder, tpl,
+                                                  {"change_id": change_id, "approve": True})
+    assert "只有 root" in denied, denied
+
+    approved = runtime._tool_decide_contract_change(root, tpl, {
+        "change_id": change_id, "approve": True, "note": "接受",
+    })
+    assert "已批准" in approved, approved
+    current = runtime.state["contracts"]["api"]
+    assert current["version"] == 2 and current["status"] == "frozen"
+    assert runtime.log.query(type="contract_change_decided")[0]["approved"] is True
+
+
+def test_report_contract_version_mismatch() -> None:
+    runtime, root, _coder, workflow = _runtime_with_workers()
+    tpl = workflow.workers["root"]
+    tpl.require_contracts = False
+    runtime._tool_write_contract(root, tpl, {
+        "key": "api", "content": "v1", "status": "frozen",
+    })
+    ok = runtime._tool_report(root, tpl, {
+        "summary": "v1 完成", "contracts_used": {"api": 1},
+    })
+    assert ok == "report 已记录", ok
+
+    runtime._tool_write_contract(root, tpl, {
+        "key": "api", "content": "v2", "status": "frozen", "replace": True,
+    })
+    rejected = runtime._tool_report(root, tpl, {
+        "summary": "旧版本", "contracts_used": {"api": 1},
+    })
+    assert "已升到 v2" in rejected, rejected
+    assert runtime.log.query(type="contract_version_mismatch")
+
+
 def main() -> int:
     checks = [
         ("契约 hash + checks 通过", test_contract_hash_and_checks_pass),
         ("checks 失败拒绝 report", test_contract_failed_checks_reject_report),
         ("契约篡改被检测", test_contract_tamper_detected),
+        ("契约变更协议", test_contract_change_protocol),
+        ("report 契约版本门禁", test_report_contract_version_mismatch),
     ]
     return run("契约机器校验自检", checks)
 

@@ -8,8 +8,9 @@
 4. 冲突处理：
    - 优先保留契约与测试；
    - 解不了就在 `report` 里给出冲突文件、两边意图、阻塞点，不要硬塞；
-5. 每合一个分支跑一次 `run_checks`（或 `python checks/api_contract.py`）；
-6. 全部合完跑全量 checks，`report` 贴 PASS/FAIL 汇总、每个 merge commit。
+5. 每合一个分支跑一次 `run_checks`，并核对契约版本（`read_contracts` / `verify_contract`）：
+   分支声明的 `contracts_used` 必须等于当前版本，否则先报给 root，不要硬合；
+6. 全部合完跑全量 checks，`report` 贴 PASS/FAIL 汇总、每个 merge commit、契约版本。
 
 ## 边界
 

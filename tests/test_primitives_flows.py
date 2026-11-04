@@ -335,7 +335,7 @@ def test_contracts_frozen_and_injected() -> None:
     runtime = Runtime(workflow, provider, run_dir)
     runtime.start("任务")
 
-    rejected = [e for e in runtime.log.query(type="tool_result") if "已冻结" in str(e.get("result"))]
+    rejected = [e for e in runtime.log.query(type="tool_result") if "已存在" in str(e.get("result"))]
     assert rejected, "第二次写入应当被拒"
     written = runtime.log.query(type="contract_written")
     assert [e["version"] for e in written] == [1, 2]

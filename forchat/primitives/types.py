@@ -87,6 +87,7 @@ class Report:
     decisions: list[str] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
+    contracts_used: dict[str, int] = field(default_factory=dict)
     budget: dict[str, Any] = field(default_factory=dict)
     cost_usd: float | None = None
     created_at: float = field(default_factory=time.time)
@@ -100,6 +101,7 @@ class Report:
             "decisions": self.decisions,
             "unresolved": self.unresolved,
             "evidence": self.evidence,
+            "contracts_used": self.contracts_used,
             "budget": self.budget,
             "cost_usd": self.cost_usd,
             "created_at": self.created_at,
