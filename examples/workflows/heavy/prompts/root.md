@@ -65,6 +65,14 @@
 你的职责只有：给参考图/URL、收 verdict、记录结果。细节（critic 分数、缺陷、修复轮次）
 由 `ui_acceptance` 写进 `artifacts/visual-loop-<slice>.md`，最终报告引用即可。
 
+**布局/整体配色的设计变更**：
+
+- `design` 契约是全局的；改主色/字体/布局必须走 `propose_contract_change` → `decide_contract_change` 升版本；
+- 升版后 `spawn(ui_acceptance, task="mode=design；页面清单=<所有已验收页面>；...")`，
+  让它对**所有页面**跑回归，而不是只验当前 slice；
+- 参考图/基线更新也必须伴随契约变更，不能为了"变绿"偷偷换基线；
+- 报告里写清设计变更影响面与回归结果。
+
 ## 阶段 6：串行合并 + 集成验收
 
 1. `spawn(integrator, wait=true, task="把 feat/<slice> 依次合并到 integration，每步跑 checks")`；

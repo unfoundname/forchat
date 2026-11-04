@@ -117,7 +117,7 @@ python tests/test_remote.py                # 分布式队列/agent/fencing
 python tests/test_contracts.py             # 契约 hash + checks
 python tests/test_supervision.py           # 超时先视察、不自动重启
 python tests/test_capture.py               # 无头网页截图（窗口截图需 FORCHAT_TEST_WINDOW=1）
-python tests/test_visual.py                # 看图/像素对比/网页正文
+python tests/test_visual.py                # 看图/像素对比/全局配色/网页正文/结构
 python tests/test_crash.py                 # 崩溃注入
 python tests/test_recovery.py              # 半写状态恢复
 python -m forchat --demo                   # 一键假 provider 端到端（不需要 key）

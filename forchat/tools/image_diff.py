@@ -13,11 +13,12 @@ from ..registry import tool
         "reference": "参考图路径（基线）",
         "candidate": "待测图路径（实现）",
         "threshold": "单像素通道差阈值 0-255，默认 24（越小越严格）",
+        "grid": "分区对比网格数（2-12），默认 6；用于定位布局/配色差异区域",
     },
 )
-def image_diff(reference: str, candidate: str, threshold: int = 24) -> str:
+def image_diff(reference: str, candidate: str, threshold: int = 24, grid: int = 6) -> str:
     try:
-        from PIL import Image, ImageChops
+        from PIL import Image, ImageChops, ImageFilter
     except ImportError:
         return "错误：没有安装 Pillow，无法比较图片"
 
@@ -56,5 +57,43 @@ def image_diff(reference: str, candidate: str, threshold: int = 24) -> str:
     heat.save(out)
 
     note = "（尺寸不同，已把 candidate 缩放到 reference）" if resized else ""
-    return (f"差异像素 {ratio * 100:.2f}%（阈值 {limit}），平均通道差 {mean:.1f}；"
-            f"reference={ref.width}x{ref.height} {note}\n@@IMAGE:{out.resolve()}@@")
+    lines = [f"差异像素 {ratio * 100:.2f}%（阈值 {limit}），平均通道差 {mean:.1f}；"
+             f"reference={ref.width}x{ref.height} {note}"]
+
+    try:
+        rows = max(2, min(12, int(grid)))
+    except (TypeError, ValueError):
+        rows = 6
+    if rows > 1 and total:
+        ref_edges = ref.convert("L").filter(ImageFilter.FIND_EDGES).point(
+            lambda value: 255 if value > 40 else 0)
+        cand_edges = cand.convert("L").filter(ImageFilter.FIND_EDGES).point(
+            lambda value: 255 if value > 40 else 0)
+        edge_mask = ImageChops.difference(ref_edges, cand_edges)
+        cell_w, cell_h = ref.width / rows, ref.height / rows
+        regions = []
+        for row in range(rows):
+            for col in range(rows):
+                box = (int(col * cell_w), int(row * cell_h),
+                       int((col + 1) * cell_w), int((row + 1) * cell_h))
+                if box[2] <= box[0] or box[3] <= box[1]:
+                    continue
+                cell_total = (box[2] - box[0]) * (box[3] - box[1])
+                cell_changed = sum(count for value, count in
+                                   enumerate(mask.crop(box).histogram()) if value)
+                cell_edge = sum(count for value, count in
+                                enumerate(edge_mask.crop(box).histogram()) if value)
+                cell_ratio = cell_changed / cell_total
+                edge_ratio = cell_edge / cell_total
+                if cell_ratio > 0.12:
+                    kind = "结构/布局" if edge_ratio > 0.06 else "颜色/样式"
+                    regions.append((cell_ratio, row, col, kind))
+        regions.sort(reverse=True)
+        if regions:
+            lines.append("差异最集中的区域：")
+            for cell_ratio, row, col, kind in regions[:6]:
+                lines.append(f"  row={row} col={col} 差异={cell_ratio * 100:.1f}% 类型={kind}")
+        else:
+            lines.append("分区：没有超过 12% 的差异区域")
+    lines.append(f"@@IMAGE:{out.resolve()}@@")
+    return "\n".join(lines)

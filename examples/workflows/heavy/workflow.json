@@ -100,7 +100,8 @@
       "can_spawn": ["visual_critic", "fixer"],
       "tools": [
         "spawn", "wait_workers", "inspect_worker", "read_worker_report",
-        "read_image", "page_screenshot", "page_text", "image_diff",
+        "read_image", "page_screenshot", "page_text", "page_outline",
+        "image_diff", "image_palette",
         "read_contracts", "check_contract_coverage", "run_checks",
         "write_note", "write_artifact", "report"
       ],
@@ -110,7 +111,8 @@
       "role_file": "prompts/visual_critic.md",
       "can_spawn": [],
       "tools": [
-        "read_image", "page_screenshot", "page_text", "image_diff",
+        "read_image", "page_screenshot", "page_text", "page_outline",
+        "image_diff", "image_palette",
         "read", "grep", "read_contracts", "check_contract_coverage",
         "read_worker_report", "write_artifact", "report"
       ],

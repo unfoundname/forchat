@@ -27,7 +27,7 @@ READONLY_TOOLS = {
     "read", "list_dir", "grep", "glob",
     "read_state", "read_worker_report", "read_facts", "read_contracts", "inspect_worker",
     "web_fetch", "web_search", "screenshot", "window_screenshot", "page_screenshot",
-    "page_text", "read_image", "image_diff",
+    "page_text", "read_image", "image_diff", "image_palette", "page_outline",
 }
 
 PATH_KEYS = ("path", "script", "cwd", "file", "dir", "workdir")

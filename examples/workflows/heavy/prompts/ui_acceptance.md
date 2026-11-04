@@ -17,8 +17,18 @@ root 会给你：slice 名、参考图路径（多视口）、实现 URL、`chec
 4. `FAIL` → 把 blocking defects 原样交给 `fixer`（`spawn(fixer, wait=true)`）；
    修完后重新截图（`page_screenshot`）→ 回到第 2 步；
 5. `PASS` → 跑 `run_checks`（或 `python checks/visual.py`）；FAIL 也交 fixer 并继续循环；
-6. 每轮记录：轮次、critic 分数、差异像素、blocking 数、修复项，写进
-   `artifacts/visual-loop-<slice>.md`。
+6. 每轮记录：轮次、critic 分数、差异像素、**配色差异**、**结构差异区域**、blocking 数、修复项，
+   写进 `artifacts/visual-loop-<slice>.md`。
+
+## 布局 / 全局配色的额外检查
+
+- 每轮必须跑 `image_diff(grid=6)`，记录"结构/布局"与"颜色/样式"两类区域；
+- 必须跑 `image_palette`：`配色差异 > 5%` 时不得直接 PASS，要么修，要么确认是契约内的配色变更；
+- 必须跑 `page_outline` 对比参考与实现：header/nav/main/section 的顺序或数量变化 = 布局 blocker；
+- 多视口（1366x900、390x844）任一崩版 = FAIL。
+- **设计变更模式**（root 说 design 契约升版/整体换色/改布局时）：
+  不是只验收当前 slice，而是把**所有已验收页面**重新跑一遍 critic + checks（回归集），
+  防止"这页对了、别的页被颜色/布局改坏"；每页都 PASS 才能报 UI VERDICT: PASS。
 
 ## 结束条件
 
