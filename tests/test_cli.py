@@ -188,6 +188,21 @@ def test_demo_runs_without_key() -> None:
     assert "status=done" in result.stdout
 
 
+def test_all_example_workflows_load() -> None:
+    """所有示例 workflow 都必须能通过 --check（防示例漂移）。"""
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    for workflow in sorted((root / "examples" / "workflows").glob("*/workflow.json")):
+        result = subprocess.run(
+            [sys.executable, "-m", "forchat", "--check", str(workflow)],
+            cwd=root, capture_output=True, text=True, timeout=60,
+            encoding="utf-8", errors="replace",
+            env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+        )
+        assert result.returncode == 0, f"{workflow}: {result.stdout}{result.stderr}"
+
+
 def main() -> int:
     checks = [
         ("--check 进程级退出码", test_check_cli_exit_codes),
@@ -199,6 +214,7 @@ def main() -> int:
         ("compact 归档清理计划", test_compacted_cleanup_plan),
         ("--init 生成并 --check", test_init_scaffold_and_check),
         ("--demo 一键跑通", test_demo_runs_without_key),
+        ("所有示例 workflow 可加载", test_all_example_workflows_load),
     ]
     return run("CLI 自检", checks)
 

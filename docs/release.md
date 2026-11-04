@@ -54,7 +54,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q --cov=forchat --cov-fail-under=65   # 170 条用例 + 覆盖率门槛（CI 用这个；Linux + Windows 双平台）
+pytest -q --cov=forchat --cov-fail-under=65   # 171 条用例 + 覆盖率门槛（CI 用这个；Linux + Windows 双平台）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -66,7 +66,7 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_primitives_guards.py`：11 条（scope/停止/快照/重试/预算硬闸）
 - `tests/test_tools.py`：19 条（registry/provider/重试/成本/read/edit/grep/glob/web_fetch/run_checks）
 - `tests/test_policy.py`：10 条（policy/scope/脱敏/备份/run_checks 路径）
-- `tests/test_cli.py`：9 条（--check / --inspect / --runs / --prune / compact 清理 / --init / --demo）
+- `tests/test_cli.py`：10 条（--check / --inspect / --runs / --prune / compact 清理 / --init / --demo / 全示例加载）
 - `tests/test_server.py`：13 条（HTTP / SSE 分段+断点续传 / metrics 缓存/卡死计数 / 摘要签名缓存 / artifacts 列表+下载 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
 - `tests/test_stream.py`：3 条（请求级子进程 / 超时硬杀 / 取消硬杀）
 - `tests/test_web.py`：11 条（web_search / DeepSeek schema / Fetch 后端 / 视觉 / SSRF 边界）
