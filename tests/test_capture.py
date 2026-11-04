@@ -18,6 +18,13 @@ from forchat import registry, tools  # noqa: F401
 
 WINDOWS = sys.platform == "win32"
 
+try:                                       # 直接 `python tests/test_capture.py` 时没有 pytest
+    import pytest
+
+    pytestmark = pytest.mark.skipif(not WINDOWS, reason="截图能力只在 Windows 桌面验证")
+except ImportError:                        # pragma: no cover
+    pass
+
 
 def _image_path(output: str) -> Path:
     match = re.search(r"@@IMAGE:(.+?)@@", output)
@@ -27,7 +34,10 @@ def _image_path(output: str) -> Path:
 
 def test_window_screenshot_own_app() -> None:
     """Tk 窗口当"我们的软件"：不经过浏览器，直接截窗口。"""
-    import tkinter as tk
+    try:
+        import tkinter as tk
+    except ImportError:                    # pragma: no cover - 精简 Python 可能没 Tk
+        return
 
     from PIL import Image
 

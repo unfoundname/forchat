@@ -185,7 +185,7 @@ def _windows_memory_job(proc: subprocess.Popen, memory_mb: int):
     PROCESS_TERMINATE = 0x0001
 
     try:
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
         job = kernel32.CreateJobObjectW(None, None)
         if not job:
             return None

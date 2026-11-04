@@ -13,6 +13,13 @@ from forchat import subproc, tools  # noqa: F401
 
 WINDOWS = sys.platform == "win32"
 
+try:
+    import pytest
+
+    pytestmark = pytest.mark.skipif(not WINDOWS, reason="ACL 沙箱只在 Windows 验证")
+except ImportError:                        # pragma: no cover
+    pass
+
 CHILD = """import pathlib
 import sys
 
