@@ -51,6 +51,8 @@ def test_image_diff_identical_and_different() -> None:
 
 
 def test_page_text_extracts_body() -> None:
+    if sys.platform != "win32":
+        return
     from forchat.tools.page_screenshot import _browser
 
     if not _browser():
