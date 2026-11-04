@@ -10,6 +10,7 @@
    - 是否有 approved 的 `contract_change` 支撑这些差异；
    - 新路由/文件是否已加入 `docs/surface.json`；
    - 跑一次 `check_contract_coverage`；
+   - 有 UI 时：用 coder 给的实现 URL 截图，`image_diff` 对比参考图，检查 `checks/visual.py` 是否存在；
    - 没有批准变更却偏离 = **FAIL（契约漂移）**；
 4. 自己跑验证（`run_python(cwd=".worktrees/<slice>")`）：
    - 至少跑 coder 声称的测试命令；

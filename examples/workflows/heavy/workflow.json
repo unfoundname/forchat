@@ -13,7 +13,7 @@
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
-      "can_spawn": ["recon", "spike", "architect", "contract_doctor", "coder", "reviewer", "integrator", "fixer"],
+      "can_spawn": ["recon", "spike", "architect", "contract_doctor", "coder", "reviewer", "visual_critic", "integrator", "fixer"],
       "tools": [
         "spawn", "wait_workers", "stop_worker", "inspect_worker",
         "write_contract", "read_contracts", "verify_contract",
@@ -22,13 +22,17 @@
         "write_artifact", "read_worker_report", "run_checks", "git", "report"
       ],
       "budget": {"tokens": 30000000, "wall_seconds": 259200},
+      "require_checks": true,
       "require_coverage": true,
       "hooks": {"on_done": [{"action": "snapshot"}]}
     },
     "recon": {
       "role_file": "prompts/recon.md",
       "can_spawn": [],
-      "tools": ["web_fetch", "web_search", "read", "write_artifact", "write_note", "report"],
+      "tools": [
+        "web_fetch", "web_search", "read", "page_screenshot", "page_text",
+        "read_image", "image_diff", "write_artifact", "write_note", "report"
+      ],
       "budget": {"tokens": 4000000, "wall_seconds": 7200}
     },
     "spike": {
@@ -36,7 +40,8 @@
       "can_spawn": [],
       "tools": [
         "read", "grep", "glob", "edit_file", "write_file", "run_python",
-        "git", "run_checks", "read_contracts", "write_note", "report"
+        "git", "run_checks", "read_contracts", "page_screenshot", "page_text",
+        "read_image", "image_diff", "write_note", "report"
       ],
       "budget": {"tokens": 8000000, "wall_seconds": 21600}
     },
@@ -46,6 +51,7 @@
       "tools": [
         "read", "grep", "glob", "edit_file", "write_file", "run_python",
         "run_checks", "git", "read_contracts", "check_contract_coverage",
+        "page_screenshot", "page_text", "read_image", "image_diff",
         "write_artifact", "report"
       ],
       "budget": {"tokens": 8000000, "wall_seconds": 21600}
@@ -66,6 +72,7 @@
         "read", "grep", "glob", "edit_file", "write_file", "run_python",
         "git", "run_checks", "read_contracts", "verify_contract",
         "check_contract_coverage", "propose_contract_change",
+        "page_screenshot", "page_text", "read_image", "image_diff",
         "read_state", "write_note", "report"
       ],
       "budget": {"tokens": 10000000, "wall_seconds": 43200},
@@ -83,9 +90,20 @@
       "tools": [
         "read", "grep", "glob", "run_python", "run_checks", "git",
         "read_contracts", "verify_contract", "check_contract_coverage",
+        "page_screenshot", "page_text", "read_image", "image_diff",
         "read_worker_report", "read_state", "write_artifact", "report"
       ],
       "budget": {"tokens": 3000000, "wall_seconds": 7200}
+    },
+    "visual_critic": {
+      "role_file": "prompts/visual_critic.md",
+      "can_spawn": [],
+      "tools": [
+        "read_image", "page_screenshot", "page_text", "image_diff",
+        "read", "grep", "read_contracts", "check_contract_coverage",
+        "read_worker_report", "write_artifact", "report"
+      ],
+      "budget": {"tokens": 4000000, "wall_seconds": 10800}
     },
     "integrator": {
       "role_file": "prompts/integrator.md",
@@ -98,7 +116,8 @@
       "can_spawn": [],
       "tools": [
         "read", "grep", "glob", "edit_file", "write_file", "run_python",
-        "run_checks", "git", "read_state", "report"
+        "run_checks", "git", "page_screenshot", "read_image", "image_diff",
+        "read_state", "report"
       ],
       "budget": {"tokens": 6000000, "wall_seconds": 21600}
     }

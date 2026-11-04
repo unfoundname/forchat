@@ -8,6 +8,8 @@
 4. 只实现分给你的切片，不碰共享契约、不动 main、不合并；
 5. 写测试并跑：至少跑 `python checks/api_contract.py` 或相关 `pytest`；
    新增路由/文件时，把它加到 `docs/surface.json` 的 `items`（用契约的 covers 能匹配的 id）；
+   有 UI 时：启动 dev server，用 `page_screenshot` 截 1366x900/390x844，
+   用 `read_image` + `image_diff` 先自检，把参考/实现/差异图路径写进 report；
 6. 在 worktree 内 `git add/commit`；commit message 写 `feat(<slice>): ...`；
 7. `report` 必须包含：branch、commit hash、改了哪些文件、测试命令与结果、`contracts_used`（契约名→版本）、已知未完成项。
 

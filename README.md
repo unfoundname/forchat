@@ -206,8 +206,7 @@ python -m forchat --workflow examples/workflows/delivery/workflow.json "目标"
 | `scale` | 规模：6 分支并行（并发上限 4）→ 汇合 → 合并 → 复跑 | 同上 + 并发限流 |
 | `stress` | 压力：10 分支并行（并发 4 排队）→ 合并 10 次 → 复跑 | 同上 + 排队与护栏压力 |
 | `capture` | worker 自己截应用窗口/网页，看图后 report | window_screenshot / page_screenshot / 视觉 |
-| `heavy` | 重型项目复刻：侦察 → 契约 → 地基 → 并行切片 → review → 合并验收 | 全量原语 + worktree + contracts + checks |
-| `frontend` | 页面对照复刻：参考图 → critic 对比 → fixer 循环 → 机器 checks | 视觉工具 + 独立 critic，root 不拍板 |
+| `heavy` | 重型项目/前端复刻：侦察 → 契约 → 地基 → 并行切片 → review/视觉循环 → 合并验收 | 全量原语 + worktree + contracts + checks + visual_critic |
 
 ## 写一个 workflow 包
 

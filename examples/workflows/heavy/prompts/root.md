@@ -47,6 +47,22 @@
 在 frozen 契约上并行 3~6 个 coder；同阶段 3 的 review/变更规则。
 只做 recon 清单里没完成的部分，不扩范围。
 
+## 阶段 5.5：UI 切片视觉验收（有界面就必须做）
+
+前端复刻不是"看截图差不多"，而是独立 critic + 机器 checks 的循环；**你没有判定权**。
+
+对每个包含页面的切片，在 coder + reviewer 都 PASS 之后：
+
+1. 从 recon 拿到参考图路径（至少 1366x900、390x844 两个视口），从 coder 报告拿实现 URL；
+2. `spawn(visual_critic, wait=true, task="reference=<路径>；url=<实现URL>；"
+   "viewports=1366x900,390x844；slice=<slice>；按 rubric 给 PASS/FAIL + blockers")`；
+3. critic `FAIL` → 把缺陷清单原样交给 `fixer`（wait=true）→ 重新截图 → 再 critic；
+   最多 5 轮，轮次与分数写进 `artifacts/visual-loop.md`；
+4. 只有 critic `VERDICT: PASS` 且 `blockers=0` 才算该 UI 切片通过；你**不能**用
+   "我看差不多"覆盖 FAIL，也不能让 coder 自评；
+5. 参考图拿不到/被登录挡住：写进 open questions，报告里标"视觉未验证"，不要假 PASS；
+6. 集成后跑 `checks/visual.py`（architect 写的机器验收）；它 FAIL 就继续修复循环。
+
 ## 阶段 6：串行合并 + 集成验收
 
 1. `spawn(integrator, wait=true, task="把 feat/<slice> 依次合并到 integration，每步跑 checks")`；
@@ -60,6 +76,7 @@
 
 - 复刻范围（做了什么 / 没做什么）；
 - 契约矩阵：key/version/status/checks 结果；
+- UI 视觉循环：每轮 critic 分数/差异像素/blockers、最终截图路径；
 - open questions 关闭情况 + 豁免清单；
 - 分支/commit/关键文件；
 - 已知差距与下一步；

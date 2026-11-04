@@ -6,7 +6,9 @@
 2. `checks/` 下的确定性验收脚本（Python，退出码 0=PASS）：
    - `checks/api_contract.py`：校验契约里的路由存在、关键响应字段类型正确；
    - `checks/e2e.py`：启动服务 → 走主流程 → 关闭；不依赖外网；
-3. 按契约生成 **stubs**（空实现/假数据），让 coder 可以先对着桩并行；
+   - `checks/visual.py`（有 UI 时）：用参考图与实现 URL 做像素差 + 必现文案检查，
+     `REFERENCE`/`URL` 可配，退出码 0=PASS；
+3. 按契约生成 **stubs**（空实现/假数据），让 coder 可以先对着桩并行；UI 契约要含视口与必现文案；
 4. `docs/surface.json`：所有路由/文件的**覆盖清单**（items + exceptions），供
    `check_contract_coverage` 和 root 的 `require_coverage` 门禁使用；
 5. `docs/ARCH.md`：模块边界、数据流、切片分工；
