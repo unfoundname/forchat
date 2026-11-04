@@ -117,6 +117,7 @@ python tests/test_remote.py                # 分布式队列/agent/fencing
 python tests/test_contracts.py             # 契约 hash + checks
 python tests/test_supervision.py           # 超时先视察、不自动重启
 python tests/test_capture.py               # 窗口/无头网页截图
+python tests/test_visual.py                # 看图/像素对比/网页正文
 python tests/test_crash.py                 # 崩溃注入
 python tests/test_recovery.py              # 半写状态恢复
 python -m forchat --demo                   # 一键假 provider 端到端（不需要 key）
@@ -206,6 +207,7 @@ python -m forchat --workflow examples/workflows/delivery/workflow.json "目标"
 | `stress` | 压力：10 分支并行（并发 4 排队）→ 合并 10 次 → 复跑 | 同上 + 排队与护栏压力 |
 | `capture` | worker 自己截应用窗口/网页，看图后 report | window_screenshot / page_screenshot / 视觉 |
 | `heavy` | 重型项目复刻：侦察 → 契约 → 地基 → 并行切片 → review → 合并验收 | 全量原语 + worktree + contracts + checks |
+| `frontend` | 页面对照复刻：参考图 → critic 对比 → fixer 循环 → 机器 checks | 视觉工具 + 独立 critic，root 不拍板 |
 
 ## 写一个 workflow 包
 
