@@ -13,7 +13,7 @@
   "workers": {
     "root": {
       "role_file": "prompts/root.md",
-      "can_spawn": ["recon", "spike", "architect", "contract_doctor", "coder", "reviewer", "visual_critic", "integrator", "fixer"],
+      "can_spawn": ["recon", "spike", "architect", "contract_doctor", "coder", "reviewer", "ui_acceptance", "integrator", "fixer"],
       "tools": [
         "spawn", "wait_workers", "stop_worker", "inspect_worker",
         "write_contract", "read_contracts", "verify_contract",
@@ -94,6 +94,17 @@
         "read_worker_report", "read_state", "write_artifact", "report"
       ],
       "budget": {"tokens": 3000000, "wall_seconds": 7200}
+    },
+    "ui_acceptance": {
+      "role_file": "prompts/ui_acceptance.md",
+      "can_spawn": ["visual_critic", "fixer"],
+      "tools": [
+        "spawn", "wait_workers", "inspect_worker", "read_worker_report",
+        "read_image", "page_screenshot", "page_text", "image_diff",
+        "read_contracts", "check_contract_coverage", "run_checks",
+        "write_note", "write_artifact", "report"
+      ],
+      "budget": {"tokens": 8000000, "wall_seconds": 86400}
     },
     "visual_critic": {
       "role_file": "prompts/visual_critic.md",

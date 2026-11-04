@@ -49,19 +49,21 @@
 
 ## 阶段 5.5：UI 切片视觉验收（有界面就必须做）
 
-前端复刻不是"看截图差不多"，而是独立 critic + 机器 checks 的循环；**你没有判定权**。
+视觉循环**整体交给 `ui_acceptance`**，你不参与每轮判断，也不要自己 spawn critic/fixer。
 
 对每个包含页面的切片，在 coder + reviewer 都 PASS 之后：
 
-1. 从 recon 拿到参考图路径（至少 1366x900、390x844 两个视口），从 coder 报告拿实现 URL；
-2. `spawn(visual_critic, wait=true, task="reference=<路径>；url=<实现URL>；"
-   "viewports=1366x900,390x844；slice=<slice>；按 rubric 给 PASS/FAIL + blockers")`；
-3. critic `FAIL` → 把缺陷清单原样交给 `fixer`（wait=true）→ 重新截图 → 再 critic；
-   最多 5 轮，轮次与分数写进 `artifacts/visual-loop.md`；
-4. 只有 critic `VERDICT: PASS` 且 `blockers=0` 才算该 UI 切片通过；你**不能**用
-   "我看差不多"覆盖 FAIL，也不能让 coder 自评；
-5. 参考图拿不到/被登录挡住：写进 open questions，报告里标"视觉未验证"，不要假 PASS；
-6. 集成后跑 `checks/visual.py`（architect 写的机器验收）；它 FAIL 就继续修复循环。
+1. 从 recon 拿参考图路径（至少 1366x900、390x844 两个视口），从 coder 报告拿实现 URL；
+2. `spawn(ui_acceptance, wait=true, task="slice=<slice>；reference=<路径>；url=<实现URL>；"
+   "checks=python checks/visual.py；最多 5 轮")`；
+3. 读它的回执第一行：
+   - `UI VERDICT: PASS` → 该切片通过；
+   - `UI VERDICT: FAIL` → 记入未收敛项，最终报告如实说明；不要再自己开一轮；
+4. 参考图拿不到/被登录挡住：写进 open questions，报告标"视觉未验证"，不要假 PASS；
+5. 集成后再跑一次 `checks/visual.py`；FAIL 交 fixer，最多 3 轮（这是集成门禁，不是视觉循环）。
+
+你的职责只有：给参考图/URL、收 verdict、记录结果。细节（critic 分数、缺陷、修复轮次）
+由 `ui_acceptance` 写进 `artifacts/visual-loop-<slice>.md`，最终报告引用即可。
 
 ## 阶段 6：串行合并 + 集成验收
 
@@ -76,7 +78,7 @@
 
 - 复刻范围（做了什么 / 没做什么）；
 - 契约矩阵：key/version/status/checks 结果；
-- UI 视觉循环：每轮 critic 分数/差异像素/blockers、最终截图路径；
+- UI 验收回执：每个切片的 `UI VERDICT`、轮次、分数、artifact 路径；
 - open questions 关闭情况 + 豁免清单；
 - 分支/commit/关键文件；
 - 已知差距与下一步；

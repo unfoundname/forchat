@@ -26,6 +26,7 @@
 | `coder` | 在独立 worktree 实现一个切片；缺契约走变更协议；UI 切片先自检截图 |
 | `reviewer` | 自动派生；读 diff + 跑测试 + 核对契约版本，独立 PASS/FAIL |
 | `visual_critic` | UI 切片独立对比参考/实现，PASS/FAIL + blockers；不修改代码 |
+| `ui_acceptance` | 独立负责视觉循环：派 critic → FAIL 派 fixer → 重截 → 收敛，向 root 交 verdict |
 | `integrator` | 按序合并到 `integration`，每步跑检查 |
 | `fixer` | 集成/视觉缺陷最小修复 |
 
@@ -37,8 +38,8 @@
 4. **波次 1**：2~3 个 coder 并行；缺契约走 `propose_contract_change` → root `decide_contract_change`；
 5. **契约收敛**：contract_doctor 扫漂移；root 批准变更、升版本、更新 checks，升级为 `frozen`；
 6. **波次 2**：在 frozen 契约上并行剩余切片；
-7. **UI 视觉循环**（每个 UI 切片）：`visual_critic` 对比参考图与实现 → FAIL 交 `fixer` → 重新截图，
-   最多 5 轮；只有 `VERDICT: PASS` 且 `blockers=0` 才算通过；
+7. **UI 视觉验收**（每个 UI 切片）：root 把参考图/URL 交给 `ui_acceptance`，由它独立跑
+   `visual_critic`/`fixer` 循环（最多 5 轮），root 只看 `UI VERDICT`；
 8. **合并 + 验收**：integrator 串行合并；全量 `run_checks`（含 `checks/visual.py`）；fixer ≤3 轮；
 9. **交付**：契约矩阵、视觉循环历史、checks 证据、open questions 关闭情况、差距。
 
