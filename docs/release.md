@@ -77,7 +77,7 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_exec.py`：3 条（环境脱敏 / 按 worker kill / UTF-8）
 - `tests/test_remote.py`：5 条（队列/远程叶子/取消/fencing 幂等/重试上限）
 - `tests/test_contracts.py`：6 条（hash+checks / checks 失败拒绝 report / 篡改检测 / 变更协议 / 版本门禁 / 覆盖矩阵）
-- `tests/test_capture.py`：4 条（窗口截图无浏览器 / 无头网页截图 / 内网拒绝 / DPI；非 Windows 跳过）
+- `tests/test_capture.py`：4 条（窗口截图无浏览器 / 无头网页截图 / 内网拒绝 / DPI；窗口测试需 `FORCHAT_TEST_WINDOW=1`；非 Windows 跳过）
 - `tests/test_visual.py`：3 条（read_image / image_diff / page_text）
 - `tests/test_supervision.py`：3 条（超时只标 suspect / inspect_worker 视察 / 看门狗默认不 stop）
 - `tests/test_crash.py`：1 条（worker 写到一半被杀，事件流/恢复仍可读）

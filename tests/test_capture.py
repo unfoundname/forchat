@@ -33,7 +33,18 @@ def _image_path(output: str) -> Path:
 
 
 def test_window_screenshot_own_app() -> None:
-    """Tk 窗口当"我们的软件"：不经过浏览器，直接截窗口。"""
+    """Tk 窗口当"我们的软件"：不经过浏览器，直接截窗口。
+
+    会真的弹一个 Tk 窗口，默认不跑；要验证窗口截图时显式设
+    `FORCHAT_TEST_WINDOW=1`。产品运行不会创建任何 Tk 窗口。
+    """
+    if os.environ.get("FORCHAT_TEST_WINDOW") != "1":
+        try:
+            import pytest
+
+            pytest.skip("窗口截图测试需显式设 FORCHAT_TEST_WINDOW=1")
+        except ImportError:
+            return
     try:
         import tkinter as tk
     except ImportError:                    # pragma: no cover - 精简 Python 可能没 Tk

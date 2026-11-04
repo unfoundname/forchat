@@ -116,7 +116,7 @@ python tests/test_web.py                   # web_search/视觉/SSRF 边界
 python tests/test_remote.py                # 分布式队列/agent/fencing
 python tests/test_contracts.py             # 契约 hash + checks
 python tests/test_supervision.py           # 超时先视察、不自动重启
-python tests/test_capture.py               # 窗口/无头网页截图
+python tests/test_capture.py               # 无头网页截图（窗口截图需 FORCHAT_TEST_WINDOW=1）
 python tests/test_visual.py                # 看图/像素对比/网页正文
 python tests/test_crash.py                 # 崩溃注入
 python tests/test_recovery.py              # 半写状态恢复
