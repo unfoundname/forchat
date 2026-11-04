@@ -49,6 +49,8 @@ USAGE = """用法:
   python -m forchat --resume <run-dir> [目标]   在同一个运行目录上继续推进
   python -m forchat --resume-worker <run-dir> <worker-id>   从执行快照继续某个 worker
   python -m forchat --version   打印版本
+  python -m forchat --init <dir>   生成一个最小 workflow 包
+  python -m forchat --demo   跑一次假 provider 的端到端 demo（不需要 key）
 """
 
 
@@ -311,6 +313,32 @@ def main() -> None:
     if args and args[0] in ("-V", "--version"):
         print(f"forchat {_version()}")
         return
+    if args and args[0] == "--init":
+        from .scaffold import init_project
+
+        target = args[1] if len(args) > 1 else "hello-workflow"
+        try:
+            files = init_project(target)
+        except FileExistsError as exc:
+            print(f"[init] {exc}")
+            return 2
+        print(f"[init] 已生成最小 workflow：{target}")
+        for path in files:
+            print(f"  - {path}")
+        print(f"下一步：python -m forchat --check {files[0]}")
+        return
+    if args and args[0] == "--demo":
+        from . import exec as exec_mod
+
+        demo = Path(__file__).resolve().parents[1] / "examples" / "run_demo.py"
+        if not demo.is_file():
+            print("[demo] 找不到 examples/run_demo.py（只在源码仓库可用）")
+            return 2
+        proc = exec_mod.run_simple([sys.executable, str(demo)], scrub=False, timeout=300)
+        print(proc.stdout, end="")
+        if proc.returncode:
+            print(proc.stderr, file=sys.stderr)
+        raise SystemExit(proc.returncode)
     if args and args[0] == "--tools":
         _list_tools()
         close_all()

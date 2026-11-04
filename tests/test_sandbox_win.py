@@ -84,6 +84,26 @@ def test_sandbox_off_runs_normally() -> None:
     assert (outside / "out.txt").is_file(), "关闭沙箱时不限制写入"
 
 
+def test_launcher_fail_closed_on_grant_error() -> None:
+    """ACL/令牌安装失败时 launcher 必须 127，不能落到无约束执行。"""
+    from forchat import sandbox_win
+
+    original = sandbox_win.spawn_confined
+
+    def boom(*_args, **_kwargs):
+        raise sandbox_win.SandboxError("SetNamedSecurityInfoW Win32 5")
+
+    sandbox_win.spawn_confined = boom
+    try:
+        code = sandbox_win.main([
+            "--workspace", str(tmpdir()), "--mode", "workspace-write",
+            "--", "cmd", "/c", "echo", "hi",
+        ])
+    finally:
+        sandbox_win.spawn_confined = original
+    assert code == 127
+
+
 def main() -> int:
     if not WINDOWS:
         print("跳过：ACL 沙箱仅支持 Windows")
@@ -92,6 +112,7 @@ def main() -> int:
         ("工作区可写/外部拒绝", test_workspace_write_allowed_outside_denied),
         ("read-only 全拒", test_read_only_denies_workspace_write),
         ("授权失败 fail-closed", test_fail_closed_when_grant_fails),
+        ("launcher 安装失败 127", test_launcher_fail_closed_on_grant_error),
         ("关闭沙箱不受限", test_sandbox_off_runs_normally),
     ]
     return run("Windows ACL 沙箱自检", checks)

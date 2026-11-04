@@ -54,7 +54,7 @@ resume 的历史恢复——都不是只信模型自述。
 ## 4. 测试与守卫
 
 ```
-pytest -q --cov=forchat --cov-fail-under=65   # 165 条用例 + 覆盖率门槛（CI 用这个；Linux + Windows 双平台）
+pytest -q --cov=forchat --cov-fail-under=65   # 170 条用例 + 覆盖率门槛（CI 用这个；Linux + Windows 双平台）
 python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 ```
 
@@ -66,20 +66,21 @@ python tests/run_all.py      # 同上 + 分层校验 + demo + MCP 自检
 - `tests/test_primitives_guards.py`：11 条（scope/停止/快照/重试/预算硬闸）
 - `tests/test_tools.py`：19 条（registry/provider/重试/成本/read/edit/grep/glob/web_fetch/run_checks）
 - `tests/test_policy.py`：10 条（policy/scope/脱敏/备份/run_checks 路径）
-- `tests/test_cli.py`：7 条（--check / --inspect / --runs / --prune / compact 清理）
+- `tests/test_cli.py`：9 条（--check / --inspect / --runs / --prune / compact 清理 / --init / --demo）
 - `tests/test_server.py`：13 条（HTTP / SSE 分段+断点续传 / metrics 缓存/卡死计数 / 摘要签名缓存 / artifacts 列表+下载 / 鉴权 / 限流 / 停止 / 单 worker 强停与替换 / 成本）
 - `tests/test_stream.py`：3 条（请求级子进程 / 超时硬杀 / 取消硬杀）
 - `tests/test_web.py`：11 条（web_search / DeepSeek schema / Fetch 后端 / 视觉 / SSRF 边界）
 - `tests/test_process_worker.py`：2 条（叶子 worker 子进程执行 / 子进程硬杀）
 - `tests/test_concurrency.py`：4 条（原子写 / 旧 hash 拒绝 / edit 校验 hash+mtime）
 - `tests/test_locks.py`：3 条（同进程等锁 / 超时 / 跨进程互斥）
-- `tests/test_sandbox_win.py`：4 条（工作区写/外部拒 / read-only / fail-closed / 关闭对比；非 Windows 跳过）
+- `tests/test_sandbox_win.py`：5 条（工作区写/外部拒 / read-only / fail-closed / launcher 127 / 关闭对比；非 Windows 跳过）
 - `tests/test_exec.py`：3 条（环境脱敏 / 按 worker kill / UTF-8）
 - `tests/test_remote.py`：5 条（队列/远程叶子/取消/fencing 幂等/重试上限）
 - `tests/test_contracts.py`：3 条（hash+checks / checks 失败拒绝 report / 篡改检测）
 - `tests/test_capture.py`：4 条（窗口截图无浏览器 / 无头网页截图 / 内网拒绝 / DPI；非 Windows 跳过）
 - `tests/test_supervision.py`：3 条（超时只标 suspect / inspect_worker 视察 / 看门狗默认不 stop）
 - `tests/test_crash.py`：1 条（worker 写到一半被杀，事件流/恢复仍可读）
+- `tests/test_recovery.py`：2 条（原子写 kill 下无半截 / 残行残 state 可恢复）
 - `tests/test_subproc.py`：5 条（超时 / 脱敏环境 / 内存上限 / 取消 kill 工具子进程 / force_stop 联动）
 - `tests/test_layering.py`：依赖方向、领域词隔离、唯一执行循环、单文件 ≤500 行
 

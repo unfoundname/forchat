@@ -92,6 +92,8 @@ pip install -e ".[llm]"     # 接真模型：装 openai
 ```powershell
 python tests/run_all.py            # 全部本地检查（全部测试文件 + 分层 + demo + MCP，推荐）
 pytest -q                          # 同一批用例走 pytest（CI 用的就是这个）
+python -m forchat --demo           # 一键跑通：假 provider 完整运行（root → coder → reviewer）
+python -m forchat --init my-workflow   # 生成最小 workflow 包（workflow.json + prompts/root.md）
 python tests/test_primitives.py            # 原语：预算/配置校验
 python tests/test_primitives_flows.py      # 原语：派生/hook/并发
 python tests/test_primitives_resources.py  # 原语：compact/资源/排队/心跳
@@ -105,13 +107,19 @@ python tests/test_server.py                # HTTP/SSE/metrics/artifacts/强停
 python tests/test_subproc.py               # 受限子进程：超时/脱敏/取消
 python tests/test_stream.py                # 请求级子进程硬中断
 python tests/test_process_worker.py        # 整 worker 进程化硬杀
-python tests/test_web.py                   # web_search/视觉/SSRF 边界
-python tests/test_process_worker.py        # 整 worker 进程化硬杀
 python tests/test_sandbox_win.py           # Windows ACL 沙箱（非 Windows 跳过）
 python tests/test_exec.py                  # 进程唯一出口
 python tests/test_concurrency.py           # 原子写/乐观并发
 python tests/test_locks.py                 # 跨进程写锁
-python examples/run_demo.py        # 假 provider 跑一次完整运行：root → coder → hook 派生 reviewer
+python tests/test_web.py                   # web_search/视觉/SSRF 边界
+python tests/test_remote.py                # 分布式队列/agent/fencing
+python tests/test_contracts.py             # 契约 hash + checks
+python tests/test_supervision.py           # 超时先视察、不自动重启
+python tests/test_capture.py               # 窗口/无头网页截图
+python tests/test_crash.py                 # 崩溃注入
+python tests/test_recovery.py              # 半写状态恢复
+python -m forchat --demo                   # 一键假 provider 端到端（不需要 key）
+python -m forchat --init my-workflow       # 生成最小 workflow 包
 ```
 
 ## 跑真模型

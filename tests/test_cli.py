@@ -146,6 +146,48 @@ def test_compacted_cleanup_plan() -> None:
     assert len(list(run_dir.iterdir())) == 1
 
 
+def test_init_scaffold_and_check() -> None:
+    """forchat --init 生成包，紧接着 --check 能通过。"""
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    target = tmpdir() / "hello-wf"
+    result = subprocess.run(
+        [sys.executable, "-m", "forchat", "--init", str(target)],
+        cwd=root, capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (target / "workflow.json").is_file()
+    assert (target / "prompts" / "root.md").is_file()
+
+    check = subprocess.run(
+        [sys.executable, "-m", "forchat", "--check", str(target / "workflow.json")],
+        cwd=root, capture_output=True, text=True, timeout=60,
+        encoding="utf-8", errors="replace",
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert check.returncode == 0, check.stdout + check.stderr
+
+
+def test_demo_runs_without_key() -> None:
+    """forchat --demo 一条命令跑出端到端假 provider 运行。"""
+    import os
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    env.pop("DEEPSEEK_API_KEY", None)
+    result = subprocess.run(
+        [sys.executable, "-m", "forchat", "--demo"],
+        cwd=root, capture_output=True, text=True, timeout=300,
+        encoding="utf-8", errors="replace", env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "status=done" in result.stdout
+
+
 def main() -> int:
     checks = [
         ("--check 进程级退出码", test_check_cli_exit_codes),
@@ -155,6 +197,8 @@ def main() -> int:
         ("--runs 缺失目录", test_runs_missing_dir),
         ("--prune 计划与删除", test_prune_dry_run_then_delete),
         ("compact 归档清理计划", test_compacted_cleanup_plan),
+        ("--init 生成并 --check", test_init_scaffold_and_check),
+        ("--demo 一键跑通", test_demo_runs_without_key),
     ]
     return run("CLI 自检", checks)
 
